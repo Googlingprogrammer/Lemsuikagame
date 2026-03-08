@@ -875,9 +875,15 @@ function drawFruit(fruit) {
   rotate(fruit.rotation);
 
   if (img) {
-    // Draw image
+    // Draw image clipped to circle
+    drawingContext.save();
+    drawingContext.beginPath();
+    drawingContext.arc(0, 0, radius, 0, Math.PI * 2);
+    drawingContext.closePath();
+    drawingContext.clip();
     imageMode(CENTER);
     image(img, 0, 0, diameter, diameter);
+    drawingContext.restore();
   } else {
     // Draw colored circle with label
     fill(fruitData.color);
@@ -924,10 +930,17 @@ function drawPreviewFruit() {
   translate(previewX, DANGER_LINE_Y - 30 - radius);
 
   if (img) {
+    // Draw image clipped to circle
+    drawingContext.save();
+    drawingContext.beginPath();
+    drawingContext.arc(0, 0, radius, 0, Math.PI * 2);
+    drawingContext.closePath();
+    drawingContext.clip();
     tint(255, alpha);
     imageMode(CENTER);
     image(img, 0, 0, diameter, diameter);
     noTint();
+    drawingContext.restore();
   } else {
     let c = color(fruitData.color);
     c.setAlpha(alpha);
