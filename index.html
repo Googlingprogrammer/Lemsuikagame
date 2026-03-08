@@ -57,6 +57,10 @@ let soundEnabled = false;
 let globalVolume = 0.5;
 let audioContext = null;
 
+// Background music
+let bgm = null;
+let bgmStarted = false;
+
 // Reference to fruits array from config (initialized in setup)
 let FRUITS = [];
 
@@ -967,6 +971,9 @@ function touchMoved() {
 }
 
 function handleInput(x, y) {
+  // Start BGM on first user interaction (browser autoplay policy)
+  startBgm();
+
   switch (gameState) {
     case 'menu':
       handleMenuInput(x, y);
@@ -1062,6 +1069,13 @@ function initAudio() {
     }
   }
 
+  // Initialize background music from config
+  if (!bgm && typeof SOUND_CONFIG !== 'undefined' && SOUND_CONFIG.bgm && SOUND_CONFIG.bgm.file) {
+    bgm = new Audio(SOUND_CONFIG.bgm.file);
+    bgm.loop = SOUND_CONFIG.bgm.loop !== false;
+    bgm.volume = SOUND_CONFIG.bgm.volume !== undefined ? SOUND_CONFIG.bgm.volume : 0.5;
+  }
+
   // Load sound files from config
   if (soundEnabled && typeof SOUND_CONFIG !== 'undefined' && SOUND_CONFIG.sounds) {
     for (let soundName in SOUND_CONFIG.sounds) {
@@ -1070,6 +1084,16 @@ function initAudio() {
         loadAudioFile(soundName, soundData.file);
       }
     }
+  }
+}
+
+function startBgm() {
+  if (bgm && !bgmStarted) {
+    bgm.play().then(() => {
+      bgmStarted = true;
+    }).catch(e => {
+      // Autoplay blocked, will retry on next interaction
+    });
   }
 }
 
