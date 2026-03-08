@@ -10,7 +10,9 @@ const UI_CONFIG = {
   // BACKGROUND & PLAY AREA
   // ==========================================================================
   background: {
-    color: '#C8956C',           // Outer background (warm tan)
+    color: '#C8956C',           // Fallback color (warm tan)
+    // image: 'images/background.png',  // Optional: background image path
+    // imageMode: 'cover',       // 'cover', 'contain', 'stretch', or 'tile'
   },
 
   playArea: {

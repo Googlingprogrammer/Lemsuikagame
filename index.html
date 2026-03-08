@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Fruit Drop - Suika Game Clone</title>
+  <title>Lém Toen Drop - Suika Game Clone</title>
   <style>
     * {
       margin: 0;
@@ -62,6 +62,9 @@ let audioContext = null;
 let bgm = null;
 let bgmStarted = false;
 
+// Background image (loaded from UI config)
+let backgroundImage = null;
+
 // Reference to fruits array from config (initialized in setup)
 let FRUITS = [];
 
@@ -72,7 +75,7 @@ let DROPPABLE_INDICES = []; // Indices of fruits that can be dropped
 // ============================================================================
 // DEBUG
 // ============================================================================
-const bDebug = true; // Set to false to disable debug overlay
+const bDebug = false; // Set to false to disable debug overlay
 
 // ============================================================================
 // GAME CONSTANTS
@@ -150,6 +153,19 @@ function preload() {
   if (typeof SOUND_CONFIG !== 'undefined') {
     soundEnabled = SOUND_CONFIG.enabled !== false;
     globalVolume = SOUND_CONFIG.volume !== undefined ? SOUND_CONFIG.volume : 0.5;
+  }
+
+  // Load background image from UI config
+  if (typeof UI_CONFIG !== 'undefined' && UI_CONFIG.background && UI_CONFIG.background.image) {
+    backgroundImage = loadImage(
+      UI_CONFIG.background.image,
+      () => console.log('Background image loaded:', UI_CONFIG.background.image),
+      () => {
+        console.error('Failed to load background image:', UI_CONFIG.background.image);
+        console.log('Using color fallback for background');
+        backgroundImage = null;
+      }
+    );
   }
 }
 
@@ -240,8 +256,71 @@ function loadConfig() {
   }
 }
 
-function draw() {
+function drawBackground() {
+  // Always draw fallback color first
   background(UI_CONFIG.background.color);
+
+  // If background image is loaded, draw it on top
+  if (backgroundImage) {
+    let mode = UI_CONFIG.background.imageMode || 'cover';
+    let imgW = backgroundImage.width;
+    let imgH = backgroundImage.height;
+
+    push();
+    imageMode(CORNER);
+
+    switch (mode) {
+      case 'cover':
+        // Scale to cover entire canvas, may crop
+        let coverScale = Math.max(canvasWidth / imgW, canvasHeight / imgH);
+        let coverW = imgW * coverScale;
+        let coverH = imgH * coverScale;
+        let coverX = (canvasWidth - coverW) / 2;
+        let coverY = (canvasHeight - coverH) / 2;
+        image(backgroundImage, coverX, coverY, coverW, coverH);
+        break;
+
+      case 'contain':
+        // Scale to fit inside canvas, may have letterboxing
+        let containScale = Math.min(canvasWidth / imgW, canvasHeight / imgH);
+        let containW = imgW * containScale;
+        let containH = imgH * containScale;
+        let containX = (canvasWidth - containW) / 2;
+        let containY = (canvasHeight - containH) / 2;
+        image(backgroundImage, containX, containY, containW, containH);
+        break;
+
+      case 'stretch':
+        // Stretch to fill canvas exactly
+        image(backgroundImage, 0, 0, canvasWidth, canvasHeight);
+        break;
+
+      case 'tile':
+        // Tile the image across the canvas
+        for (let ty = 0; ty < canvasHeight; ty += imgH) {
+          for (let tx = 0; tx < canvasWidth; tx += imgW) {
+            image(backgroundImage, tx, ty);
+          }
+        }
+        break;
+
+      default:
+        // Default to cover
+        let defScale = Math.max(canvasWidth / imgW, canvasHeight / imgH);
+        let defW = imgW * defScale;
+        let defH = imgH * defScale;
+        let defX = (canvasWidth - defW) / 2;
+        let defY = (canvasHeight - defH) / 2;
+        image(backgroundImage, defX, defY, defW, defH);
+    }
+
+    pop();
+  }
+}
+
+function draw() {
+  // Draw background (image or fallback color)
+  drawBackground();
 
   switch (gameState) {
     case 'menu':
