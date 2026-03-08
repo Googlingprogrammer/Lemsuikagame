@@ -14,7 +14,7 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background: #1a1a2e;
+      background: #C8956C;
       touch-action: none;
     }
     main {
@@ -39,6 +39,7 @@
   <!-- Configuration Files -->
   <script src="fruit-config.js"></script>
   <script src="sound-config.js"></script>
+  <script src="ui-config.js"></script>
 
   <script>
 // ============================================================================
@@ -67,6 +68,11 @@ let FRUITS = [];
 // Drop weights calculated from config (only fruits with spawnRate > 0)
 let DROP_WEIGHTS = [];
 let DROPPABLE_INDICES = []; // Indices of fruits that can be dropped
+
+// ============================================================================
+// DEBUG
+// ============================================================================
+const bDebug = true; // Set to false to disable debug overlay
 
 // ============================================================================
 // GAME CONSTANTS
@@ -125,7 +131,15 @@ function preload() {
   if (typeof FRUIT_CONFIG !== 'undefined' && FRUIT_CONFIG.fruits) {
     for (let fruit of FRUIT_CONFIG.fruits) {
       if (fruit.image) {
-        fruitImages[fruit.name] = loadImage(fruit.image);
+        fruitImages[fruit.name] = loadImage(
+          fruit.image,
+          () => console.log('Image loaded:', fruit.name),
+          () => {
+            console.error('Failed to load image for "' + fruit.name + '" from ' + fruit.image);
+            console.log('Using color fallback for:', fruit.name);
+            fruitImages[fruit.name] = null;
+          }
+        );
       } else {
         fruitImages[fruit.name] = null;
       }
@@ -142,6 +156,11 @@ function preload() {
 function setup() {
   // Load configuration
   loadConfig();
+
+  // Sync CSS background with UI config
+  if (typeof UI_CONFIG !== 'undefined' && UI_CONFIG.background) {
+    document.body.style.background = UI_CONFIG.background.color;
+  }
 
   // Initialize audio context and load sounds
   initAudio();
@@ -222,7 +241,7 @@ function loadConfig() {
 }
 
 function draw() {
-  background('#1a1a2e');
+  background(UI_CONFIG.background.color);
 
   switch (gameState) {
     case 'menu':
@@ -241,6 +260,42 @@ function draw() {
       drawLoseScreen();
       break;
   }
+
+  // Debug overlay
+  if (bDebug) {
+    drawDebug();
+  }
+}
+
+function drawDebug() {
+  push();
+
+  // Semi-transparent background for debug panel
+  fill(UI_CONFIG.debug.backgroundColor);
+  noStroke();
+  rect(5, canvasHeight - 95, 160, 90, 5);
+
+  // Debug text
+  fill(UI_CONFIG.debug.textColor);
+  textAlign(LEFT, TOP);
+  textSize(11);
+
+  let y = canvasHeight - 90;
+  let lineHeight = 14;
+
+  text('DEBUG', 10, y);
+  y += lineHeight;
+  text('Canvas: ' + canvasWidth + ' x ' + canvasHeight, 10, y);
+  y += lineHeight;
+  text('Play area: ' + gameAreaWidth + ' x ' + (gameAreaBottom - gameAreaTop), 10, y);
+  y += lineHeight;
+  text('Window: ' + windowWidth + ' x ' + windowHeight, 10, y);
+  y += lineHeight;
+  text('Fruits: ' + fruits.length, 10, y);
+  y += lineHeight;
+  text('Scale: ' + FRUIT_SCALE, 10, y);
+
+  pop();
 }
 
 // ============================================================================
@@ -290,42 +345,47 @@ function windowResized() {
 // ============================================================================
 
 function drawMenu() {
+  // Draw cream colored menu box
+  fill(UI_CONFIG.menu.panelColor);
+  noStroke();
+  rect(20, canvasHeight * 0.15, canvasWidth - 40, canvasHeight * 0.75, 15);
+
   // Title
-  fill(255);
+  fill(UI_CONFIG.menu.titleColor);
   textAlign(CENTER, CENTER);
   textSize(48);
-  text('Fruit Drop', canvasWidth / 2, canvasHeight * 0.25);
+  text('Fruit Drop', canvasWidth / 2, canvasHeight * 0.28);
 
   // Watermelon emoji
   textSize(80);
-  text('\u{1F349}', canvasWidth / 2, canvasHeight * 0.4);
+  text('\u{1F349}', canvasWidth / 2, canvasHeight * 0.43);
 
   // High score
   textSize(20);
-  fill('#aaa');
-  text('High Score: ' + highScore, canvasWidth / 2, canvasHeight * 0.55);
+  fill(UI_CONFIG.menu.highScoreColor);
+  text('High Score: ' + highScore, canvasWidth / 2, canvasHeight * 0.58);
 
   // Play button
   let btnX = canvasWidth / 2;
-  let btnY = canvasHeight * 0.7;
+  let btnY = canvasHeight * 0.72;
   let btnW = 160;
   let btnH = 50;
 
   let isHover = isMouseInRect(btnX - btnW/2, btnY - btnH/2, btnW, btnH);
 
-  fill(isHover ? '#3498db' : '#2980b9');
+  fill(isHover ? UI_CONFIG.menu.button.hover : UI_CONFIG.menu.button.normal);
   noStroke();
   rect(btnX - btnW/2, btnY - btnH/2, btnW, btnH, 10);
 
-  fill(255);
+  fill(UI_CONFIG.menu.button.textColor);
   textSize(24);
   text('Play', btnX, btnY);
 
   // Instructions
   textSize(14);
-  fill('#888');
-  text('Tap to drop fruits', canvasWidth / 2, canvasHeight * 0.85);
-  text('Match same fruits to merge!', canvasWidth / 2, canvasHeight * 0.89);
+  fill(UI_CONFIG.menu.instructionColor);
+  text('Tap to drop fruits', canvasWidth / 2, canvasHeight * 0.83);
+  text('Match same fruits to merge!', canvasWidth / 2, canvasHeight * 0.87);
 }
 
 // ============================================================================
@@ -618,12 +678,41 @@ function createWalls() {
 // ============================================================================
 
 function drawGame() {
-  // Draw walls
-  fill('#34495e');
+  // Draw wooden frame (3D effect)
+  // Outer darker wood
+  fill(UI_CONFIG.frame.outerWood);
   noStroke();
-  rect(0, 0, WALL_THICKNESS, canvasHeight); // Left
-  rect(canvasWidth - WALL_THICKNESS, 0, WALL_THICKNESS, canvasHeight); // Right
-  rect(0, canvasHeight - WALL_THICKNESS, canvasWidth, WALL_THICKNESS); // Bottom
+  rect(0, gameAreaTop - 10, canvasWidth, canvasHeight - gameAreaTop + 10);
+
+  // Inner lighter wood edge (creates depth)
+  fill(UI_CONFIG.frame.innerWood);
+  rect(5, gameAreaTop - 5, canvasWidth - 10, canvasHeight - gameAreaTop);
+
+  // Cream play area
+  fill(UI_CONFIG.playArea.color);
+  rect(WALL_THICKNESS, gameAreaTop, gameAreaWidth, gameAreaBottom - gameAreaTop);
+
+  // Draw wooden walls with gradient effect
+  // Left wall
+  fill(UI_CONFIG.frame.outerWood);
+  rect(0, gameAreaTop - 10, WALL_THICKNESS, canvasHeight - gameAreaTop + 10);
+  // Left wall inner highlight
+  fill(UI_CONFIG.frame.wallHighlight);
+  rect(WALL_THICKNESS - 3, gameAreaTop, 3, gameAreaBottom - gameAreaTop);
+
+  // Right wall
+  fill(UI_CONFIG.frame.outerWood);
+  rect(canvasWidth - WALL_THICKNESS, gameAreaTop - 10, WALL_THICKNESS, canvasHeight - gameAreaTop + 10);
+  // Right wall inner highlight
+  fill(UI_CONFIG.frame.wallHighlight);
+  rect(canvasWidth - WALL_THICKNESS, gameAreaTop, 3, gameAreaBottom - gameAreaTop);
+
+  // Bottom wall
+  fill(UI_CONFIG.frame.outerWood);
+  rect(0, canvasHeight - WALL_THICKNESS, canvasWidth, WALL_THICKNESS);
+  // Bottom wall inner highlight
+  fill(UI_CONFIG.frame.wallHighlight);
+  rect(WALL_THICKNESS, gameAreaBottom - 3, gameAreaWidth, 3);
 
   // Draw danger line
   drawDangerLine();
@@ -658,7 +747,7 @@ function drawDangerLine() {
     }
   }
 
-  stroke(flashRed ? '#ff0000' : '#ff6b6b');
+  stroke(flashRed ? UI_CONFIG.dangerLine.flashColor : UI_CONFIG.dangerLine.normalColor);
   strokeWeight(2);
   drawingContext.setLineDash([10, 10]);
   line(WALL_THICKNESS, DANGER_LINE_Y, canvasWidth - WALL_THICKNESS, DANGER_LINE_Y);
@@ -666,7 +755,7 @@ function drawDangerLine() {
 
   // Danger label
   noStroke();
-  fill(flashRed ? '#ff0000' : '#ff6b6b');
+  fill(flashRed ? UI_CONFIG.dangerLine.flashColor : UI_CONFIG.dangerLine.normalColor);
   textAlign(LEFT, CENTER);
   textSize(12);
   text('DANGER', WALL_THICKNESS + 5, DANGER_LINE_Y - 12);
@@ -726,7 +815,7 @@ function drawPreviewFruit() {
   let diameter = radius * 2;
 
   // Draw drop guide line
-  stroke(255, 50);
+  stroke(UI_CONFIG.dropGuide.color);
   strokeWeight(1);
   drawingContext.setLineDash([5, 5]);
   line(previewX, DANGER_LINE_Y - 30, previewX, gameAreaBottom);
@@ -768,25 +857,27 @@ function drawPreviewFruit() {
 }
 
 function drawScore() {
-  // Score background
-  fill(0, 150);
-  noStroke();
+  // Score background (warm wooden look)
+  fill(UI_CONFIG.score.backgroundColor);
+  stroke(UI_CONFIG.score.borderColor);
+  strokeWeight(2);
   rect(canvasWidth / 2 - 60, 10, 120, 35, 8);
 
   // Score text
-  fill(255);
+  noStroke();
+  fill(UI_CONFIG.score.textColor);
   textAlign(CENTER, CENTER);
   textSize(20);
   text(score, canvasWidth / 2, 27);
 
   // High score
   textSize(12);
-  fill('#aaa');
+  fill(UI_CONFIG.score.highScoreColor);
   text('Best: ' + highScore, canvasWidth / 2, 55);
 
   // Mode indicator
   if (gameMode === 'endless') {
-    fill('#f39c12');
+    fill(UI_CONFIG.score.endlessModeColor);
     textSize(10);
     text('ENDLESS', canvasWidth / 2, 70);
   }
@@ -799,11 +890,13 @@ function drawNextFruitIndicator() {
   let boxW = 70;
   let boxH = 70;
 
-  fill(0, 150);
-  noStroke();
+  fill(UI_CONFIG.nextFruit.backgroundColor);
+  stroke(UI_CONFIG.nextFruit.borderColor);
+  strokeWeight(2);
   rect(boxX - boxW/2, boxY - boxH/2 + 5, boxW, boxH, 8);
 
-  fill('#aaa');
+  noStroke();
+  fill(UI_CONFIG.nextFruit.labelColor);
   textAlign(CENTER, CENTER);
   textSize(10);
   text('NEXT', boxX, boxY - 18);
@@ -836,51 +929,56 @@ function drawNextFruitIndicator() {
 // ============================================================================
 
 function drawWinScreen() {
-  // Overlay
-  fill(0, 180);
+  // Overlay with warm tint
+  fill(UI_CONFIG.win.overlayColor);
   rect(0, 0, canvasWidth, canvasHeight);
 
+  // Win panel
+  fill(UI_CONFIG.win.panelColor);
+  noStroke();
+  rect(canvasWidth / 2 - 110, canvasHeight * 0.18, 220, canvasHeight * 0.7, 15);
+
   // Win message
-  fill('#2ecc71');
+  fill(UI_CONFIG.win.titleColor);
   textAlign(CENTER, CENTER);
   textSize(36);
-  text('YOU WIN!', canvasWidth / 2, canvasHeight * 0.25);
+  text('YOU WIN!', canvasWidth / 2, canvasHeight * 0.28);
 
   // Watermelon emoji
   textSize(60);
-  text('\u{1F349}', canvasWidth / 2, canvasHeight * 0.38);
+  text('\u{1F349}', canvasWidth / 2, canvasHeight * 0.40);
 
   // Score
-  fill(255);
+  fill(UI_CONFIG.win.scoreColor);
   textSize(24);
-  text('Score: ' + score, canvasWidth / 2, canvasHeight * 0.52);
+  text('Score: ' + score, canvasWidth / 2, canvasHeight * 0.54);
 
   textSize(16);
-  fill('#aaa');
-  text('High Score: ' + highScore, canvasWidth / 2, canvasHeight * 0.58);
+  fill(UI_CONFIG.win.highScoreColor);
+  text('High Score: ' + highScore, canvasWidth / 2, canvasHeight * 0.60);
 
   // Play Again button
   let btn1X = canvasWidth / 2;
-  let btn1Y = canvasHeight * 0.7;
+  let btn1Y = canvasHeight * 0.70;
   let btnW = 180;
   let btnH = 45;
 
   let hover1 = isMouseInRect(btn1X - btnW/2, btn1Y - btnH/2, btnW, btnH);
-  fill(hover1 ? '#3498db' : '#2980b9');
+  fill(hover1 ? UI_CONFIG.win.playAgainButton.hover : UI_CONFIG.win.playAgainButton.normal);
   noStroke();
   rect(btn1X - btnW/2, btn1Y - btnH/2, btnW, btnH, 8);
 
-  fill(255);
+  fill(UI_CONFIG.win.playAgainButton.textColor);
   textSize(18);
   text('Play Again', btn1X, btn1Y);
 
   // Continue in Endless button
-  let btn2Y = canvasHeight * 0.8;
+  let btn2Y = canvasHeight * 0.80;
   let hover2 = isMouseInRect(btn1X - btnW/2, btn2Y - btnH/2, btnW, btnH);
-  fill(hover2 ? '#e67e22' : '#d35400');
+  fill(hover2 ? UI_CONFIG.win.endlessButton.hover : UI_CONFIG.win.endlessButton.normal);
   rect(btn1X - btnW/2, btn2Y - btnH/2, btnW, btnH, 8);
 
-  fill(255);
+  fill(UI_CONFIG.win.endlessButton.textColor);
   textSize(16);
   text('Continue in Endless', btn1X, btn2Y);
 }
@@ -890,24 +988,29 @@ function drawWinScreen() {
 // ============================================================================
 
 function drawLoseScreen() {
-  // Overlay
-  fill(0, 180);
+  // Overlay with warm tint
+  fill(UI_CONFIG.lose.overlayColor);
   rect(0, 0, canvasWidth, canvasHeight);
 
+  // Game over panel
+  fill(UI_CONFIG.lose.panelColor);
+  noStroke();
+  rect(canvasWidth / 2 - 100, canvasHeight * 0.22, 200, canvasHeight * 0.6, 15);
+
   // Game over message
-  fill('#e74c3c');
+  fill(UI_CONFIG.lose.titleColor);
   textAlign(CENTER, CENTER);
   textSize(36);
-  text('GAME OVER', canvasWidth / 2, canvasHeight * 0.3);
+  text('GAME OVER', canvasWidth / 2, canvasHeight * 0.32);
 
   // Score
-  fill(255);
+  fill(UI_CONFIG.lose.scoreColor);
   textSize(24);
-  text('Score: ' + score, canvasWidth / 2, canvasHeight * 0.45);
+  text('Score: ' + score, canvasWidth / 2, canvasHeight * 0.47);
 
   textSize(16);
-  fill('#aaa');
-  text('High Score: ' + highScore, canvasWidth / 2, canvasHeight * 0.52);
+  fill(UI_CONFIG.lose.highScoreColor);
+  text('High Score: ' + highScore, canvasWidth / 2, canvasHeight * 0.54);
 
   // Try Again button
   let btn1X = canvasWidth / 2;
@@ -916,21 +1019,21 @@ function drawLoseScreen() {
   let btnH = 45;
 
   let hover1 = isMouseInRect(btn1X - btnW/2, btn1Y - btnH/2, btnW, btnH);
-  fill(hover1 ? '#3498db' : '#2980b9');
+  fill(hover1 ? UI_CONFIG.lose.tryAgainButton.hover : UI_CONFIG.lose.tryAgainButton.normal);
   noStroke();
   rect(btn1X - btnW/2, btn1Y - btnH/2, btnW, btnH, 8);
 
-  fill(255);
+  fill(UI_CONFIG.lose.tryAgainButton.textColor);
   textSize(18);
   text('Try Again', btn1X, btn1Y);
 
   // Main Menu button
   let btn2Y = canvasHeight * 0.77;
   let hover2 = isMouseInRect(btn1X - btnW/2, btn2Y - btnH/2, btnW, btnH);
-  fill(hover2 ? '#7f8c8d' : '#95a5a6');
+  fill(hover2 ? UI_CONFIG.lose.menuButton.hover : UI_CONFIG.lose.menuButton.normal);
   rect(btn1X - btnW/2, btn2Y - btnH/2, btnW, btnH, 8);
 
-  fill(255);
+  fill(UI_CONFIG.lose.menuButton.textColor);
   text('Main Menu', btn1X, btn2Y);
 }
 
@@ -1074,6 +1177,10 @@ function initAudio() {
     bgm = new Audio(SOUND_CONFIG.bgm.file);
     bgm.loop = SOUND_CONFIG.bgm.loop !== false;
     bgm.volume = SOUND_CONFIG.bgm.volume !== undefined ? SOUND_CONFIG.bgm.volume : 0.5;
+    bgm.onerror = () => {
+      console.error('BGM failed to load:', SOUND_CONFIG.bgm.file);
+      bgm = null;
+    };
   }
 
   // Load sound files from config
@@ -1091,21 +1198,29 @@ function startBgm() {
   if (bgm && !bgmStarted) {
     bgm.play().then(() => {
       bgmStarted = true;
+      console.log('BGM started');
     }).catch(e => {
-      // Autoplay blocked, will retry on next interaction
+      console.warn('BGM autoplay blocked, will retry on next interaction');
     });
   }
 }
 
 function loadAudioFile(soundName, filePath) {
   fetch(filePath)
-    .then(response => response.arrayBuffer())
+    .then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${filePath}`);
+      }
+      return response.arrayBuffer();
+    })
     .then(arrayBuffer => audioContext.decodeAudioData(arrayBuffer))
     .then(audioBuffer => {
+      console.log('Sound loaded:', soundName);
       gameSounds[soundName] = audioBuffer;
     })
     .catch(e => {
-      console.warn('Could not load sound:', soundName, e);
+      console.error('Failed to load sound "' + soundName + '" from ' + filePath + ':', e.message);
+      console.log('Using placeholder sound for:', soundName);
       gameSounds[soundName] = null;
     });
 }
