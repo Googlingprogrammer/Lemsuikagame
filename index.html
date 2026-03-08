@@ -131,16 +131,26 @@ let walls = [];
 
 function preload() {
   // Load fruit images from config
+  // Note: p5play wraps loadImage and may call error callback with the image on success
+  // We work around this by checking if the "error" is actually a valid image
   if (typeof FRUIT_CONFIG !== 'undefined' && FRUIT_CONFIG.fruits) {
     for (let fruit of FRUIT_CONFIG.fruits) {
       if (fruit.image) {
+        console.log('Loading image for:', fruit.name);
         fruitImages[fruit.name] = loadImage(
           fruit.image,
-          () => console.log('Image loaded:', fruit.name),
-          () => {
-            console.error('Failed to load image for "' + fruit.name + '" from ' + fruit.image);
-            console.log('Using color fallback for:', fruit.name);
-            fruitImages[fruit.name] = null;
+          (img) => {
+            console.log('Image loaded:', fruit.name, img.width + 'x' + img.height);
+          },
+          (errOrImg) => {
+            // p5play bug workaround: check if "error" is actually a loaded image
+            if (errOrImg && errOrImg.width && errOrImg.height) {
+              console.log('Image loaded (via p5play):', fruit.name, errOrImg.width + 'x' + errOrImg.height);
+              fruitImages[fruit.name] = errOrImg;
+            } else {
+              console.error('Failed to load image for:', fruit.name);
+              fruitImages[fruit.name] = null;
+            }
           }
         );
       } else {
@@ -155,15 +165,22 @@ function preload() {
     globalVolume = SOUND_CONFIG.volume !== undefined ? SOUND_CONFIG.volume : 0.5;
   }
 
+
   // Load background image from UI config
+  // Note: p5play wraps loadImage and may call error callback with the image on success
   if (typeof UI_CONFIG !== 'undefined' && UI_CONFIG.background && UI_CONFIG.background.image) {
     backgroundImage = loadImage(
       UI_CONFIG.background.image,
-      () => console.log('Background image loaded:', UI_CONFIG.background.image),
-      () => {
-        console.error('Failed to load background image:', UI_CONFIG.background.image);
-        console.log('Using color fallback for background');
-        backgroundImage = null;
+      (img) => console.log('Background image loaded:', img.width + 'x' + img.height),
+      (errOrImg) => {
+        // p5play bug workaround: check if "error" is actually a loaded image
+        if (errOrImg && errOrImg.width && errOrImg.height) {
+          console.log('Background image loaded (via p5play):', errOrImg.width + 'x' + errOrImg.height);
+          backgroundImage = errOrImg;
+        } else {
+          console.error('Failed to load background image');
+          backgroundImage = null;
+        }
       }
     );
   }
