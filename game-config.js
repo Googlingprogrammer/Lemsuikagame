@@ -1,11 +1,11 @@
 // ============================================================================
-// FRUIT CONFIGURATION FILE
+// GAME CONFIGURATION FILE
 // ============================================================================
-// Edit this file to customize fruits for your game!
+// Edit this file to customize your game!
 // Changes take effect on page refresh.
 // ============================================================================
 
-const FRUIT_CONFIG = {
+const GAME_CONFIG = {
   // -------------------------------------------------------------------------
   // FRUIT DEFINITIONS
   // -------------------------------------------------------------------------
@@ -28,7 +28,7 @@ const FRUIT_CONFIG = {
       color: '#e74c3c',
       score: 1,
       spawnRate: 50,  // Most common drop
-      image: null     // Set to 'images/cherry.png' to use image
+      image: 'images/tit.jpg'     // Set to 'images/cherry.png' to use image
     },
     {
       name: 'strawberry',
@@ -98,13 +98,23 @@ const FRUIT_CONFIG = {
 
   // Danger zone settings
   dangerLineY: 120,        // Distance from top in pixels
-  dangerTime: 10000,        // Time above line before game over (ms)
+  dangerTime: 10000,       // Time above line before game over (ms)
   warningTime: 3000,       // Flash warning during last X ms
 
   // Physics settings
   gravity: 20,
   bounciness: 0.2,
-  friction: 0.5
+  friction: 0.5,
+
+  // -------------------------------------------------------------------------
+  // COMBO SETTINGS
+  // -------------------------------------------------------------------------
+
+  // Time window to chain combos (ms)
+  comboInterval: 2000,
+
+  // Maximum bonus points per combo hit
+  comboBonusCap: 50
 };
 
 // ============================================================================

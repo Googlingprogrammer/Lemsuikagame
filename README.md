@@ -14,19 +14,33 @@ A browser-based clone of the popular Suika Game (Watermelon Game). Drop fruits, 
 
 The game is highly customizable through config files:
 
-### Fruit Configuration (`fruit-config.js`)
+### Game Configuration (`game-config.js`)
 
-Customize fruits, sizes, colors, spawn rates, and images:
+Customize fruits, gameplay settings, and combo mechanics:
 
 ```javascript
 {
-  name: 'cherry',
-  displayName: 'Cherry',
-  radius: 20,
-  color: '#e74c3c',      // Fallback color
-  score: 1,
-  spawnRate: 50,         // Higher = more common (0 = can't spawn, only merge)
-  image: 'images/cherry.png'  // Optional custom image
+  // Fruit definition
+  fruits: [
+    {
+      name: 'cherry',
+      displayName: 'Cherry',
+      radius: 20,
+      color: '#e74c3c',      // Fallback color
+      score: 1,
+      spawnRate: 50,         // Higher = more common (0 = can't spawn, only merge)
+      image: 'images/cherry.png'  // Optional custom image
+    }
+  ],
+
+  // Gameplay settings
+  dropCooldown: 400,       // Time between drops (ms)
+  gravity: 20,             // Physics gravity
+  fruitScale: 1,           // Size multiplier
+
+  // Combo settings
+  comboInterval: 1000,     // Time window to chain combos (ms)
+  comboBonusCap: 10        // Max bonus points per combo hit
 }
 ```
 
@@ -77,7 +91,7 @@ Customize colors, backgrounds, and visual appearance:
 ```
 Lemsuikagame/
 ├── index.html          # Main game file
-├── fruit-config.js     # Fruit customization
+├── game-config.js      # Game & fruit customization
 ├── sound-config.js     # Sound customization
 ├── ui-config.js        # UI/visual customization
 ├── images/             # Place fruit & background images here
@@ -99,7 +113,7 @@ Lemsuikagame/
    - apple.png: 130x130 px
    - pear.png: 150x150 px
    - watermelon.png: 180x180 px
-3. Update `fruit-config.js` with the image paths
+3. Update `game-config.js` with the image paths
 
 ### Background Image
 

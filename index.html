@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Lém Toen Drop - Suika Game Clone</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;800&display=swap" rel="stylesheet">
   <style>
     * {
       margin: 0;
@@ -37,7 +40,7 @@
   <script src="https://p5play.org/v3/p5play.js"></script>
 
   <!-- Configuration Files -->
-  <script src="fruit-config.js"></script>
+  <script src="game-config.js"></script>
   <script src="sound-config.js"></script>
   <script src="ui-config.js"></script>
 
@@ -64,6 +67,9 @@ let bgmStarted = false;
 
 // Background image (loaded from UI config)
 let backgroundImage = null;
+
+// Floating score texts (for score pop-up effect)
+let floatingTexts = [];
 
 // Reference to fruits array from config (initialized in setup)
 let FRUITS = [];
@@ -133,8 +139,8 @@ function preload() {
   // Load fruit images from config
   // Note: p5play wraps loadImage and may call error callback with the image on success
   // We work around this by checking if the "error" is actually a valid image
-  if (typeof FRUIT_CONFIG !== 'undefined' && FRUIT_CONFIG.fruits) {
-    for (let fruit of FRUIT_CONFIG.fruits) {
+  if (typeof GAME_CONFIG !== 'undefined' && GAME_CONFIG.fruits) {
+    for (let fruit of GAME_CONFIG.fruits) {
       if (fruit.image) {
         console.log('Loading image for:', fruit.name);
         fruitImages[fruit.name] = loadImage(
@@ -211,6 +217,9 @@ function setup() {
     container.appendChild(canvasEl);
   }
 
+  // Set cute font
+  textFont('Nunito');
+
   // Set up p5play world
   world.gravity.y = GRAVITY;
 
@@ -234,8 +243,8 @@ function setup() {
 
 function loadConfig() {
   // Load fruits from config
-  if (typeof FRUIT_CONFIG !== 'undefined' && FRUIT_CONFIG.fruits) {
-    FRUITS = FRUIT_CONFIG.fruits;
+  if (typeof GAME_CONFIG !== 'undefined' && GAME_CONFIG.fruits) {
+    FRUITS = GAME_CONFIG.fruits;
 
     // Build drop weights and droppable indices from spawnRate
     DROP_WEIGHTS = [];
@@ -248,17 +257,19 @@ function loadConfig() {
     }
 
     // Load game settings
-    if (FRUIT_CONFIG.dropCooldown) DROP_COOLDOWN = FRUIT_CONFIG.dropCooldown;
-    if (FRUIT_CONFIG.dangerLineY) DANGER_LINE_Y = FRUIT_CONFIG.dangerLineY;
-    if (FRUIT_CONFIG.dangerTime) DANGER_TIME = FRUIT_CONFIG.dangerTime;
-    if (FRUIT_CONFIG.warningTime) WARNING_TIME = FRUIT_CONFIG.warningTime;
-    if (FRUIT_CONFIG.gravity) GRAVITY = FRUIT_CONFIG.gravity;
-    if (FRUIT_CONFIG.bounciness) FRUIT_BOUNCINESS = FRUIT_CONFIG.bounciness;
-    if (FRUIT_CONFIG.friction) FRUIT_FRICTION = FRUIT_CONFIG.friction;
-    if (FRUIT_CONFIG.fruitScale) FRUIT_SCALE = FRUIT_CONFIG.fruitScale;
+    if (GAME_CONFIG.dropCooldown) DROP_COOLDOWN = GAME_CONFIG.dropCooldown;
+    if (GAME_CONFIG.dangerLineY) DANGER_LINE_Y = GAME_CONFIG.dangerLineY;
+    if (GAME_CONFIG.dangerTime) DANGER_TIME = GAME_CONFIG.dangerTime;
+    if (GAME_CONFIG.warningTime) WARNING_TIME = GAME_CONFIG.warningTime;
+    if (GAME_CONFIG.gravity) GRAVITY = GAME_CONFIG.gravity;
+    if (GAME_CONFIG.bounciness) FRUIT_BOUNCINESS = GAME_CONFIG.bounciness;
+    if (GAME_CONFIG.friction) FRUIT_FRICTION = GAME_CONFIG.friction;
+    if (GAME_CONFIG.fruitScale) FRUIT_SCALE = GAME_CONFIG.fruitScale;
+    if (GAME_CONFIG.comboInterval) COMBO_INTERVAL = GAME_CONFIG.comboInterval;
+    if (GAME_CONFIG.comboBonusCap) COMBO_BONUS_CAP = GAME_CONFIG.comboBonusCap;
   } else {
     // Fallback to defaults if config not loaded
-    console.warn('FRUIT_CONFIG not found, using defaults');
+    console.warn('GAME_CONFIG not found, using defaults');
     FRUITS = [
       { name: 'cherry', displayName: 'Cherry', radius: 20, color: '#e74c3c', score: 1, spawnRate: 50 },
       { name: 'strawberry', displayName: 'Strawberry', radius: 30, color: '#e91e63', score: 3, spawnRate: 35 },
@@ -497,8 +508,13 @@ function startGame(mode) {
   canDrop = true;
   lastDropTime = 0;
 
-  // Clear existing fruits
+  // Clear existing fruits and floating texts
   clearAllFruits();
+  floatingTexts = [];
+  activeCombo = null;
+  comboMeter.active = false;
+  comboMeter.comboCount = 0;
+  comboMeter.totalBonus = 0;
 
   // Create walls
   createWalls();
@@ -530,6 +546,9 @@ function updateGame() {
 
   // Check danger zone
   checkDangerZone();
+
+  // Update floating score texts
+  updateFloatingTexts();
 
   // Clean up any fruits that fell off screen (shouldn't happen, but safety)
   cleanupFruits();
@@ -682,7 +701,11 @@ function processMergeQueue() {
     let mergeY = (merge.a.y + merge.b.y) / 2;
 
     // Add score
-    score += FRUITS[merge.index].score;
+    let points = FRUITS[merge.index].score;
+    score += points;
+
+    // Spawn floating score text (pass fruit score for combo bonus calculation)
+    spawnFloatingText('+' + points, mergeX, mergeY, FRUITS[merge.index].color, points);
 
     // Play merge sound
     playSound('merge');
@@ -713,6 +736,277 @@ function removeFruit(fruit) {
     fruitsGroup.remove(fruit);
     fruit.remove();
   }
+}
+
+// ============================================================================
+// FLOATING SCORE TEXT (COMBO SYSTEM)
+// ============================================================================
+
+// Combo settings (loaded from config in setup)
+let COMBO_INTERVAL = 1000;
+let COMBO_BONUS_CAP = 10;
+
+// Active combo text (null if no active combo)
+let activeCombo = null;
+
+// Combo meter state
+let comboMeter = {
+  active: false,
+  timeLeft: 0,
+  comboCount: 0,
+  totalBonus: 0,
+  hue: 0  // For gradient animation
+};
+
+function calculateComboBonus(comboCount, fruitScore) {
+  // Bonus ramps up: +1 for 2nd combo, +2 for 3rd, etc., capped at COMBO_BONUS_CAP
+  // First merge = no bonus, second = +1, third = +2, etc.
+  if (comboCount <= 1) return 0;
+  let bonus = comboCount - 1;
+  return Math.min(bonus, COMBO_BONUS_CAP);
+}
+
+function spawnFloatingText(text, x, y, color, fruitScore) {
+  let points = parseInt(text.replace('+', '')) || 0;
+  fruitScore = fruitScore || points;
+
+  // Check if we should add to existing combo
+  if (activeCombo && activeCombo.age < COMBO_INTERVAL) {
+    // Add to existing combo
+    activeCombo.comboCount++;
+
+    // Calculate combo bonus
+    let bonus = calculateComboBonus(activeCombo.comboCount, fruitScore);
+    activeCombo.totalScore += points + bonus;
+    activeCombo.lastBonus = bonus;
+    activeCombo.text = '+' + activeCombo.totalScore;
+
+    // Update position to new merge location (weighted average)
+    activeCombo.x = (activeCombo.x + x) / 2;
+    activeCombo.startY = (activeCombo.startY + y) / 2;
+
+    // Trigger shake effect
+    activeCombo.shakeTime = 0;
+    activeCombo.shaking = true;
+
+    // Reset age to extend lifetime
+    activeCombo.age = 0;
+
+    // Update combo meter
+    comboMeter.active = true;
+    comboMeter.timeLeft = COMBO_INTERVAL;
+    comboMeter.comboCount = activeCombo.comboCount;
+    comboMeter.totalBonus += bonus;
+
+    // Add bonus to actual score
+    score += bonus;
+  } else {
+    // Create new combo
+    activeCombo = {
+      text: '+' + points,
+      totalScore: points,
+      comboCount: 1,
+      lastBonus: 0,
+      x: x,
+      y: y,
+      startY: y,
+      color: color || '#FFD700',
+      alpha: 255,
+      scale: 1,
+      age: 0,
+      lifetime: COMBO_INTERVAL + 500,  // Combo window + fade out time
+      shakeTime: 0,
+      shaking: true
+    };
+    floatingTexts.push(activeCombo);
+
+    // Initialize combo meter
+    comboMeter.active = true;
+    comboMeter.timeLeft = COMBO_INTERVAL;
+    comboMeter.comboCount = 1;
+    comboMeter.totalBonus = 0;
+  }
+}
+
+function updateFloatingTexts() {
+  // Update combo meter
+  if (comboMeter.active) {
+    comboMeter.timeLeft -= deltaTime;
+    comboMeter.hue = (comboMeter.hue + deltaTime * 0.2) % 360;  // Animate gradient
+
+    if (comboMeter.timeLeft <= 0) {
+      comboMeter.active = false;
+      comboMeter.comboCount = 0;
+      comboMeter.totalBonus = 0;
+    }
+  }
+
+  for (let i = floatingTexts.length - 1; i >= 0; i--) {
+    let ft = floatingTexts[i];
+    ft.age += deltaTime;
+
+    // Update shake animation
+    if (ft.shaking) {
+      ft.shakeTime += deltaTime;
+      let shakeProgress = ft.shakeTime / 200;  // 200ms shake duration
+
+      if (shakeProgress < 1) {
+        // Quick scale up and down
+        ft.scale = 1 + Math.sin(shakeProgress * Math.PI) * 0.5;
+      } else {
+        ft.shaking = false;
+        ft.scale = 1;
+      }
+    }
+
+    // Move up slowly
+    let floatProgress = Math.min(ft.age / ft.lifetime, 1);
+    ft.y = ft.startY - (60 * floatProgress);
+
+    // Start fading after combo window closes
+    if (ft.age > COMBO_INTERVAL) {
+      let fadeProgress = (ft.age - COMBO_INTERVAL) / 500;
+      ft.alpha = 255 * (1 - fadeProgress);
+    }
+
+    // Remove if expired
+    if (ft.age >= ft.lifetime) {
+      floatingTexts.splice(i, 1);
+      if (activeCombo === ft) {
+        activeCombo = null;
+      }
+    }
+  }
+}
+
+function drawFloatingTexts() {
+  for (let ft of floatingTexts) {
+    push();
+    translate(ft.x, ft.y);
+    scale(ft.scale);
+
+    // Draw text with outline for visibility
+    textAlign(CENTER, CENTER);
+    textSize(28);
+    textStyle(BOLD);
+
+    // Outline
+    fill(0, ft.alpha * 0.5);
+    for (let ox = -2; ox <= 2; ox++) {
+      for (let oy = -2; oy <= 2; oy++) {
+        if (ox !== 0 || oy !== 0) {
+          text(ft.text, ox, oy);
+        }
+      }
+    }
+
+    // Main text - brighter yellow for combos
+    let r = 255;
+    let g = Math.max(180, 255 - ft.comboCount * 20);  // Gets more orange with combos
+    let b = Math.max(0, 100 - ft.comboCount * 20);
+    fill(r, g, b, ft.alpha);
+    text(ft.text, 0, 0);
+
+    // Show combo count if > 1
+    if (ft.comboCount > 1) {
+      textSize(14);
+      fill(255, 255, 255, ft.alpha * 0.9);
+      text(ft.comboCount + ' combo!', 0, 24);
+    }
+
+    textStyle(NORMAL);
+    pop();
+  }
+}
+
+function drawComboMeter() {
+  if (!comboMeter.active || comboMeter.comboCount < 2) return;
+
+  let meterX = WALL_THICKNESS + 10;
+  let meterY = 85;
+  let meterW = gameAreaWidth - 20;
+  let meterH = 20;
+
+  // Background
+  fill(0, 100);
+  noStroke();
+  rect(meterX, meterY, meterW, meterH, 10);
+
+  // Progress bar with gradient
+  let progress = comboMeter.timeLeft / COMBO_INTERVAL;
+  let barW = meterW * progress;
+
+  if (barW > 0) {
+    // Create gradient effect
+    drawingContext.save();
+
+    // Clip to rounded rect
+    drawingContext.beginPath();
+    drawingContext.roundRect(meterX, meterY, barW, meterH, 10);
+    drawingContext.clip();
+
+    // Animated gradient
+    let gradient = drawingContext.createLinearGradient(meterX, 0, meterX + meterW, 0);
+    let hue1 = comboMeter.hue;
+    let hue2 = (comboMeter.hue + 60) % 360;
+    let hue3 = (comboMeter.hue + 120) % 360;
+
+    gradient.addColorStop(0, 'hsl(' + hue1 + ', 100%, 60%)');
+    gradient.addColorStop(0.5, 'hsl(' + hue2 + ', 100%, 60%)');
+    gradient.addColorStop(1, 'hsl(' + hue3 + ', 100%, 60%)');
+
+    drawingContext.fillStyle = gradient;
+    drawingContext.fillRect(meterX, meterY, barW, meterH);
+
+    drawingContext.restore();
+  }
+
+  // Combo text with gradient
+  push();
+  let comboText = comboMeter.comboCount + 'x COMBO';
+  if (comboMeter.totalBonus > 0) {
+    comboText += ' +' + comboMeter.totalBonus + ' bonus!';
+  }
+
+  textAlign(CENTER, CENTER);
+  textSize(12);
+  textStyle(BOLD);
+
+  // Create gradient text
+  let textX = meterX + meterW / 2;
+  let textY = meterY + meterH / 2;
+
+  // Text outline
+  fill(0, 150);
+  for (let ox = -1; ox <= 1; ox++) {
+    for (let oy = -1; oy <= 1; oy++) {
+      if (ox !== 0 || oy !== 0) {
+        text(comboText, textX + ox, textY + oy);
+      }
+    }
+  }
+
+  // Gradient text using canvas
+  drawingContext.save();
+  drawingContext.font = 'bold 12px Nunito';
+  drawingContext.textAlign = 'center';
+  drawingContext.textBaseline = 'middle';
+
+  let textGradient = drawingContext.createLinearGradient(textX - 60, 0, textX + 60, 0);
+  let th1 = (comboMeter.hue + 180) % 360;
+  let th2 = (comboMeter.hue + 240) % 360;
+  let th3 = (comboMeter.hue + 300) % 360;
+
+  textGradient.addColorStop(0, 'hsl(' + th1 + ', 100%, 85%)');
+  textGradient.addColorStop(0.5, 'hsl(' + th2 + ', 100%, 85%)');
+  textGradient.addColorStop(1, 'hsl(' + th3 + ', 100%, 85%)');
+
+  drawingContext.fillStyle = textGradient;
+  drawingContext.fillText(comboText, textX, textY);
+  drawingContext.restore();
+
+  textStyle(NORMAL);
+  pop();
 }
 
 function clearAllFruits() {
@@ -824,6 +1118,12 @@ function drawGame() {
   if (gameState === 'playing') {
     drawPreviewFruit();
   }
+
+  // Draw floating score texts
+  drawFloatingTexts();
+
+  // Draw combo meter
+  drawComboMeter();
 
   // Draw score
   drawScore();
@@ -1012,25 +1312,44 @@ function drawNextFruitIndicator() {
 
   // Draw preview of next fruit at a readable size
   let fruitData = FRUITS[nextFruitIndex];
+  let img = fruitImages[fruitData.name];
   let displayRadius = Math.min(22, fruitData.radius * 0.6);
   let displayDiameter = displayRadius * 2;
 
-  fill(fruitData.color);
-  noStroke();
-  circle(boxX, boxY + 8, displayDiameter);
+  push();
+  translate(boxX, boxY + 8);
 
-  // Draw fruit name inside
-  fill(255);
-  textAlign(CENTER, CENTER);
-  let fontSize = Math.min(displayRadius * 0.5, 10);
-  textSize(fontSize);
-  let name = fruitData.name;
-  let maxW = displayDiameter * 0.8;
-  while (textWidth(name) > maxW && fontSize > 5) {
-    fontSize -= 1;
+  if (img) {
+    // Draw image clipped to circle
+    drawingContext.save();
+    drawingContext.beginPath();
+    drawingContext.arc(0, 0, displayRadius, 0, Math.PI * 2);
+    drawingContext.closePath();
+    drawingContext.clip();
+    imageMode(CENTER);
+    image(img, 0, 0, displayDiameter, displayDiameter);
+    drawingContext.restore();
+  } else {
+    // Draw colored circle with name
+    fill(fruitData.color);
+    noStroke();
+    circle(0, 0, displayDiameter);
+
+    // Draw fruit name inside
+    fill(255);
+    textAlign(CENTER, CENTER);
+    let fontSize = Math.min(displayRadius * 0.5, 10);
     textSize(fontSize);
+    let name = fruitData.name;
+    let maxW = displayDiameter * 0.8;
+    while (textWidth(name) > maxW && fontSize > 5) {
+      fontSize -= 1;
+      textSize(fontSize);
+    }
+    text(name, 0, 0);
   }
-  text(name, boxX, boxY + 8);
+
+  pop();
 }
 
 // ============================================================================
@@ -1042,35 +1361,40 @@ function drawWinScreen() {
   fill(UI_CONFIG.win.overlayColor);
   rect(0, 0, canvasWidth, canvasHeight);
 
-  // Win panel
+  // Win panel - fixed height, centered
+  let panelW = 220;
+  let panelH = 320;
+  let panelX = canvasWidth / 2 - panelW / 2;
+  let panelY = canvasHeight / 2 - panelH / 2 - 30;
+
   fill(UI_CONFIG.win.panelColor);
   noStroke();
-  rect(canvasWidth / 2 - 110, canvasHeight * 0.18, 220, canvasHeight * 0.7, 15);
+  rect(panelX, panelY, panelW, panelH, 15);
 
   // Win message
   fill(UI_CONFIG.win.titleColor);
   textAlign(CENTER, CENTER);
   textSize(36);
-  text('YOU WIN!', canvasWidth / 2, canvasHeight * 0.28);
+  text('YOU WIN!', canvasWidth / 2, panelY + 45);
 
   // Watermelon emoji
   textSize(60);
-  text('\u{1F349}', canvasWidth / 2, canvasHeight * 0.40);
+  text('\u{1F349}', canvasWidth / 2, panelY + 110);
 
   // Score
   fill(UI_CONFIG.win.scoreColor);
   textSize(24);
-  text('Score: ' + score, canvasWidth / 2, canvasHeight * 0.54);
+  text('Score: ' + score, canvasWidth / 2, panelY + 170);
 
   textSize(16);
   fill(UI_CONFIG.win.highScoreColor);
-  text('High Score: ' + highScore, canvasWidth / 2, canvasHeight * 0.60);
+  text('High Score: ' + highScore, canvasWidth / 2, panelY + 200);
 
   // Play Again button
   let btn1X = canvasWidth / 2;
-  let btn1Y = canvasHeight * 0.70;
+  let btn1Y = panelY + 245;
   let btnW = 180;
-  let btnH = 45;
+  let btnH = 40;
 
   let hover1 = isMouseInRect(btn1X - btnW/2, btn1Y - btnH/2, btnW, btnH);
   fill(hover1 ? UI_CONFIG.win.playAgainButton.hover : UI_CONFIG.win.playAgainButton.normal);
@@ -1082,7 +1406,7 @@ function drawWinScreen() {
   text('Play Again', btn1X, btn1Y);
 
   // Continue in Endless button
-  let btn2Y = canvasHeight * 0.80;
+  let btn2Y = panelY + 295;
   let hover2 = isMouseInRect(btn1X - btnW/2, btn2Y - btnH/2, btnW, btnH);
   fill(hover2 ? UI_CONFIG.win.endlessButton.hover : UI_CONFIG.win.endlessButton.normal);
   rect(btn1X - btnW/2, btn2Y - btnH/2, btnW, btnH, 8);
@@ -1224,11 +1548,14 @@ function handleGameInput(x, y) {
 }
 
 function handleWinInput(x, y) {
+  let panelH = 320;
+  let panelY = canvasHeight / 2 - panelH / 2 - 30;
+
   let btnX = canvasWidth / 2;
-  let btn1Y = canvasHeight * 0.7;
-  let btn2Y = canvasHeight * 0.8;
+  let btn1Y = panelY + 245;
+  let btn2Y = panelY + 295;
   let btnW = 180;
-  let btnH = 45;
+  let btnH = 40;
 
   // Play Again
   if (isPointInRect(x, y, btnX - btnW/2, btn1Y - btnH/2, btnW, btnH)) {
