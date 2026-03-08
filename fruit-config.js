@@ -33,7 +33,7 @@ const FRUIT_CONFIG = {
     {
       name: 'strawberry',
       displayName: 'Strawberry',
-      radius: 30,
+      radius: 25,
       color: '#e91e63',
       score: 3,
       spawnRate: 35,  // Common drop
@@ -51,7 +51,7 @@ const FRUIT_CONFIG = {
     {
       name: 'orange',
       displayName: 'Orange',
-      radius: 55,
+      radius: 60,
       color: '#f39c12',
       score: 10,
       spawnRate: 0,   // Cannot be dropped (merge only)
@@ -69,7 +69,7 @@ const FRUIT_CONFIG = {
     {
       name: 'pear',
       displayName: 'Pear',
-      radius: 75,
+      radius: 80,
       color: '#f1c40f',
       score: 21,
       spawnRate: 0,   // Cannot be dropped (merge only)
@@ -78,7 +78,7 @@ const FRUIT_CONFIG = {
     {
       name: 'watermelon',
       displayName: 'Watermelon',
-      radius: 90,
+      radius: 120,
       color: '#2ecc71',
       score: 28,
       spawnRate: 0,   // Cannot be dropped (merge only) - this is the WIN fruit!
@@ -90,13 +90,16 @@ const FRUIT_CONFIG = {
   // GAME SETTINGS
   // -------------------------------------------------------------------------
 
+  // Global fruit size multiplier (1.0 = default, 0.8 = 20% smaller, 1.2 = 20% larger)
+  fruitScale: 1,
+
   // Time in milliseconds between drops
-  dropCooldown: 800,
+  dropCooldown: 400,
 
   // Danger zone settings
   dangerLineY: 120,        // Distance from top in pixels
-  dangerTime: 3000,        // Time above line before game over (ms)
-  warningTime: 1000,       // Flash warning during last X ms
+  dangerTime: 10000,        // Time above line before game over (ms)
+  warningTime: 3000,       // Flash warning during last X ms
 
   // Physics settings
   gravity: 20,

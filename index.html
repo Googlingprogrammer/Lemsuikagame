@@ -68,7 +68,6 @@ let DROPPABLE_INDICES = []; // Indices of fruits that can be dropped
 // GAME CONSTANTS
 // ============================================================================
 const WALL_THICKNESS = 15;
-const LEFT_PANEL_WIDTH = 70; // Extra space for evolution chart
 
 // These are loaded from config in setup(), with fallback defaults
 let DANGER_LINE_Y = 120;
@@ -78,6 +77,7 @@ let WARNING_TIME = 1000;
 let GRAVITY = 20;
 let FRUIT_BOUNCINESS = 0.2;
 let FRUIT_FRICTION = 0.5;
+let FRUIT_SCALE = 1.0;
 
 // ============================================================================
 // GAME STATE
@@ -199,6 +199,7 @@ function loadConfig() {
     if (FRUIT_CONFIG.gravity) GRAVITY = FRUIT_CONFIG.gravity;
     if (FRUIT_CONFIG.bounciness) FRUIT_BOUNCINESS = FRUIT_CONFIG.bounciness;
     if (FRUIT_CONFIG.friction) FRUIT_FRICTION = FRUIT_CONFIG.friction;
+    if (FRUIT_CONFIG.fruitScale) FRUIT_SCALE = FRUIT_CONFIG.fruitScale;
   } else {
     // Fallback to defaults if config not loaded
     console.warn('FRUIT_CONFIG not found, using defaults');
@@ -243,12 +244,12 @@ function draw() {
 // ============================================================================
 
 function calculateCanvasSize() {
-  // Fit to window while maintaining playable proportions
+  // Fit to window while maintaining fixed aspect ratio for consistent gameplay
   let maxWidth = windowWidth;
   let maxHeight = windowHeight;
 
-  // Target aspect ratio (slightly taller than wide for mobile)
-  let targetRatio = 0.6;
+  // Fixed aspect ratio for consistent experience on all devices
+  let targetRatio = 0.5; // width / height
 
   if (maxWidth / maxHeight > targetRatio) {
     // Window is wider than target - use height as constraint
@@ -261,11 +262,11 @@ function calculateCanvasSize() {
   }
 
   // Ensure minimum size
-  canvasWidth = Math.max(canvasWidth, 300);
-  canvasHeight = Math.max(canvasHeight, 500);
+  canvasWidth = Math.max(canvasWidth, 280);
+  canvasHeight = Math.max(canvasHeight, 560);
 
-  // Calculate game area bounds (left side has extra space for evolution chart)
-  gameAreaLeft = LEFT_PANEL_WIDTH;
+  // Calculate game area bounds (full width, no side panels)
+  gameAreaLeft = WALL_THICKNESS;
   gameAreaRight = canvasWidth - WALL_THICKNESS;
   gameAreaTop = DANGER_LINE_Y;
   gameAreaBottom = canvasHeight - WALL_THICKNESS;
@@ -461,7 +462,8 @@ function dropFruit() {
 
 function createFruitSprite(fruitIndex, x, y) {
   let fruitData = FRUITS[fruitIndex];
-  let diameter = fruitData.radius * 2;
+  let scaledRadius = fruitData.radius * FRUIT_SCALE;
+  let diameter = scaledRadius * 2;
 
   // Create circle sprite with correct diameter
   let sprite = new Sprite(x, y, diameter);
@@ -471,7 +473,7 @@ function createFruitSprite(fruitIndex, x, y) {
   sprite.friction = FRUIT_FRICTION;
   sprite.rotationLock = false;
   sprite.fruitIndex = fruitIndex;
-  sprite.fruitRadius = fruitData.radius; // Store for our custom drawing
+  sprite.fruitRadius = scaledRadius; // Store scaled radius for our custom drawing
   sprite.markedForMerge = false;
 
   // Hide p5play's default rendering - we draw manually
@@ -588,8 +590,8 @@ function createWalls() {
   }
   walls = [];
 
-  // Left wall (thicker to accommodate evolution chart)
-  let leftWall = new Sprite(LEFT_PANEL_WIDTH / 2, canvasHeight / 2, LEFT_PANEL_WIDTH, canvasHeight);
+  // Left wall
+  let leftWall = new Sprite(WALL_THICKNESS / 2, canvasHeight / 2, WALL_THICKNESS, canvasHeight);
   leftWall.collider = 'static';
   leftWall.visible = false;
   walls.push(leftWall);
@@ -615,7 +617,7 @@ function drawGame() {
   // Draw walls
   fill('#34495e');
   noStroke();
-  rect(0, 0, LEFT_PANEL_WIDTH, canvasHeight); // Left (wider for evolution chart)
+  rect(0, 0, WALL_THICKNESS, canvasHeight); // Left
   rect(canvasWidth - WALL_THICKNESS, 0, WALL_THICKNESS, canvasHeight); // Right
   rect(0, canvasHeight - WALL_THICKNESS, canvasWidth, WALL_THICKNESS); // Bottom
 
@@ -639,9 +641,6 @@ function drawGame() {
 
   // Draw next fruit indicator
   drawNextFruitIndicator();
-
-  // Draw evolution chart on left side
-  drawEvolutionChart();
 }
 
 function drawDangerLine() {
@@ -658,7 +657,7 @@ function drawDangerLine() {
   stroke(flashRed ? '#ff0000' : '#ff6b6b');
   strokeWeight(2);
   drawingContext.setLineDash([10, 10]);
-  line(LEFT_PANEL_WIDTH, DANGER_LINE_Y, canvasWidth - WALL_THICKNESS, DANGER_LINE_Y);
+  line(WALL_THICKNESS, DANGER_LINE_Y, canvasWidth - WALL_THICKNESS, DANGER_LINE_Y);
   drawingContext.setLineDash([]);
 
   // Danger label
@@ -666,7 +665,7 @@ function drawDangerLine() {
   fill(flashRed ? '#ff0000' : '#ff6b6b');
   textAlign(LEFT, CENTER);
   textSize(12);
-  text('DANGER', LEFT_PANEL_WIDTH + 5, DANGER_LINE_Y - 12);
+  text('DANGER', WALL_THICKNESS + 5, DANGER_LINE_Y - 12);
 
   // Show timer if danger active
   if (dangerActive) {
@@ -719,7 +718,7 @@ function drawFruit(fruit) {
 function drawPreviewFruit() {
   let fruitData = FRUITS[currentFruitIndex];
   let alpha = canDrop ? 255 : 100;
-  let radius = fruitData.radius;
+  let radius = fruitData.radius * FRUIT_SCALE;
   let diameter = radius * 2;
 
   // Draw drop guide line
@@ -826,62 +825,6 @@ function drawNextFruitIndicator() {
     textSize(fontSize);
   }
   text(name, boxX, boxY + 8);
-}
-
-function drawEvolutionChart() {
-  // Draw circular evolution chart in the left panel
-  let chartStartY = DANGER_LINE_Y + 15;
-
-  // Calculate available height for the chart
-  let availableHeight = canvasHeight - chartStartY - WALL_THICKNESS - 10;
-  let spacing = Math.min(50, availableHeight / FRUITS.length);
-  let maxDisplayRadius = 12;
-
-  // Chart positioned in the left panel
-  let panelX = 5;
-  let panelW = LEFT_PANEL_WIDTH - 10;
-
-  // Draw each fruit in the evolution chain
-  for (let i = 0; i < FRUITS.length; i++) {
-    let fruitData = FRUITS[i];
-    let y = chartStartY + 10 + i * spacing;
-
-    // Scale radius for display (proportional to actual size)
-    let displayRadius = map(fruitData.radius, 20, 90, 5, maxDisplayRadius);
-
-    // Draw fruit circle
-    let circleX = panelX + 18;
-    fill(fruitData.color);
-    noStroke();
-    circle(circleX, y, displayRadius * 2);
-
-    // Draw arrow to next fruit (except for watermelon)
-    if (i < FRUITS.length - 1) {
-      let arrowY = y + displayRadius + 2;
-      let nextDisplayRadius = map(FRUITS[i + 1].radius, 20, 90, 5, maxDisplayRadius);
-      let arrowEndY = chartStartY + 10 + (i + 1) * spacing - nextDisplayRadius - 2;
-
-      stroke('#666');
-      strokeWeight(1);
-      line(circleX, arrowY, circleX, arrowEndY);
-
-      // Small arrow head
-      fill('#666');
-      noStroke();
-      triangle(
-        circleX, arrowEndY + 2,
-        circleX - 2, arrowEndY - 1,
-        circleX + 2, arrowEndY - 1
-      );
-    }
-
-    // Draw score value on the right
-    fill('#aaa');
-    noStroke();
-    textAlign(LEFT, CENTER);
-    textSize(8);
-    text('+' + fruitData.score, circleX + maxDisplayRadius + 3, y);
-  }
 }
 
 // ============================================================================
@@ -1003,8 +946,8 @@ function mouseClicked() {
 
 function mouseMoved() {
   if (gameState === 'playing') {
-    previewX = constrain(mouseX, gameAreaLeft + FRUITS[currentFruitIndex].radius,
-                                  gameAreaRight - FRUITS[currentFruitIndex].radius);
+    let scaledRadius = FRUITS[currentFruitIndex].radius * FRUIT_SCALE;
+    previewX = constrain(mouseX, gameAreaLeft + scaledRadius, gameAreaRight - scaledRadius);
   }
 }
 
@@ -1017,8 +960,8 @@ function touchStarted() {
 
 function touchMoved() {
   if (gameState === 'playing' && touches.length > 0) {
-    previewX = constrain(touches[0].x, gameAreaLeft + FRUITS[currentFruitIndex].radius,
-                                        gameAreaRight - FRUITS[currentFruitIndex].radius);
+    let scaledRadius = FRUITS[currentFruitIndex].radius * FRUIT_SCALE;
+    previewX = constrain(touches[0].x, gameAreaLeft + scaledRadius, gameAreaRight - scaledRadius);
   }
   return false; // Prevent default
 }
@@ -1055,8 +998,8 @@ function handleMenuInput(x, y) {
 function handleGameInput(x, y) {
   // Tap anywhere in the game area to drop at that x position
   if (x > gameAreaLeft && x < gameAreaRight && canDrop) {
-    previewX = constrain(x, gameAreaLeft + FRUITS[currentFruitIndex].radius,
-                            gameAreaRight - FRUITS[currentFruitIndex].radius);
+    let scaledRadius = FRUITS[currentFruitIndex].radius * FRUIT_SCALE;
+    previewX = constrain(x, gameAreaLeft + scaledRadius, gameAreaRight - scaledRadius);
     dropFruit();
   }
 }
