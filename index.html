@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Fruit Drop - Suika Game Clone</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #1a1a2e;
+      touch-action: none;
+    }
+    main {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <main id="game-container"></main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/planck@1.0.0/dist/planck.min.js"></script>
+  <script src="https://p5play.org/v3/p5play.js"></script>
+
+  <!-- Fruit Configuration - Edit fruit-config.js to customize! -->
+  <script src="fruit-config.js"></script>
+
+  <script>
+// ============================================================================
+// FRUIT DROP - A Suika Game Clone
+// ============================================================================
+// Configuration is loaded from fruit-config.js
+// Edit that file to customize fruits, images, and game settings!
+// ============================================================================
+
+// Fruit images loaded from config
+let fruitImages = {};
+
+// Reference to fruits array from config (initialized in setup)
+let FRUITS = [];
+
+// Drop weights calculated from config (only fruits with spawnRate > 0)
+let DROP_WEIGHTS = [];
+let DROPPABLE_INDICES = []; // Indices of fruits that can be dropped
+
+// ============================================================================
+// GAME CONSTANTS
+// ============================================================================
+const WALL_THICKNESS = 15;
+const LEFT_PANEL_WIDTH = 70; // Extra space for evolution chart
+
+// These are loaded from config in setup(), with fallback defaults
+let DANGER_LINE_Y = 120;
+let DROP_COOLDOWN = 800;
+let DANGER_TIME = 3000;
+let WARNING_TIME = 1000;
+let GRAVITY = 20;
+let FRUIT_BOUNCINESS = 0.2;
+let FRUIT_FRICTION = 0.5;
+
+// ============================================================================
+// GAME STATE
+// ============================================================================
+let gameState = 'menu'; // 'menu' | 'playing' | 'win' | 'lose'
+let gameMode = 'normal'; // 'normal' | 'endless'
+
+let score = 0;
+let highScore = 0;
+
+let fruits = []; // Array of fruit sprites
+let currentFruitIndex = 0; // Index of fruit about to be dropped
+let nextFruitIndex = 0; // Index of fruit coming after current
+let previewX = 0; // X position of preview fruit
+let canDrop = true;
+let lastDropTime = 0;
+
+let dangerTimer = 0; // Time fruits have been above danger line
+let dangerActive = false;
+
+// Canvas and game area dimensions
+let canvasWidth, canvasHeight;
+let gameAreaLeft, gameAreaRight, gameAreaBottom, gameAreaTop;
+let gameAreaWidth;
+
+// Merge queue to handle physics callbacks safely
+let mergeQueue = [];
+
+// Group for all fruit sprites (needed for collision detection)
+let fruitsGroup;
+
+// Wall sprites
+let walls = [];
+
+// ============================================================================
+// P5.JS FUNCTIONS
+// ============================================================================
+
+function preload() {
+  // Load fruit images from config
+  if (typeof FRUIT_CONFIG !== 'undefined' && FRUIT_CONFIG.fruits) {
+    for (let fruit of FRUIT_CONFIG.fruits) {
+      if (fruit.image) {
+        fruitImages[fruit.name] = loadImage(fruit.image);
+      } else {
+        fruitImages[fruit.name] = null;
+      }
+    }
+  }
+}
+
+function setup() {
+  // Load configuration
+  loadConfig();
+
+  // Calculate responsive canvas size
+  calculateCanvasSize();
+
+  // Create canvas using p5play's Canvas (compatible with p5play sprites)
+  new Canvas(canvasWidth, canvasHeight);
+
+  // Move canvas to our container
+  let canvasEl = document.querySelector('canvas');
+  let container = document.getElementById('game-container');
+  if (canvasEl && container) {
+    container.appendChild(canvasEl);
+  }
+
+  // Set up p5play world
+  world.gravity.y = GRAVITY;
+
+  // Disable p5play's automatic sprite drawing (we draw manually)
+  allSprites.autoDraw = false;
+  allSprites.autoUpdate = true;
+
+  // Create fruits group for collision detection
+  fruitsGroup = new Group();
+
+  // Load high score from localStorage
+  loadHighScore();
+
+  // Initialize preview position
+  previewX = canvasWidth / 2;
+
+  // Pick first two fruits
+  currentFruitIndex = pickRandomDropFruit();
+  nextFruitIndex = pickRandomDropFruit();
+}
+
+function loadConfig() {
+  // Load fruits from config
+  if (typeof FRUIT_CONFIG !== 'undefined' && FRUIT_CONFIG.fruits) {
+    FRUITS = FRUIT_CONFIG.fruits;
+
+    // Build drop weights and droppable indices from spawnRate
+    DROP_WEIGHTS = [];
+    DROPPABLE_INDICES = [];
+    for (let i = 0; i < FRUITS.length; i++) {
+      if (FRUITS[i].spawnRate > 0) {
+        DROP_WEIGHTS.push(FRUITS[i].spawnRate);
+        DROPPABLE_INDICES.push(i);
+      }
+    }
+
+    // Load game settings
+    if (FRUIT_CONFIG.dropCooldown) DROP_COOLDOWN = FRUIT_CONFIG.dropCooldown;
+    if (FRUIT_CONFIG.dangerLineY) DANGER_LINE_Y = FRUIT_CONFIG.dangerLineY;
+    if (FRUIT_CONFIG.dangerTime) DANGER_TIME = FRUIT_CONFIG.dangerTime;
+    if (FRUIT_CONFIG.warningTime) WARNING_TIME = FRUIT_CONFIG.warningTime;
+    if (FRUIT_CONFIG.gravity) GRAVITY = FRUIT_CONFIG.gravity;
+    if (FRUIT_CONFIG.bounciness) FRUIT_BOUNCINESS = FRUIT_CONFIG.bounciness;
+    if (FRUIT_CONFIG.friction) FRUIT_FRICTION = FRUIT_CONFIG.friction;
+  } else {
+    // Fallback to defaults if config not loaded
+    console.warn('FRUIT_CONFIG not found, using defaults');
+    FRUITS = [
+      { name: 'cherry', displayName: 'Cherry', radius: 20, color: '#e74c3c', score: 1, spawnRate: 50 },
+      { name: 'strawberry', displayName: 'Strawberry', radius: 30, color: '#e91e63', score: 3, spawnRate: 35 },
+      { name: 'grape', displayName: 'Grape', radius: 40, color: '#9b59b6', score: 6, spawnRate: 15 },
+      { name: 'orange', displayName: 'Orange', radius: 55, color: '#f39c12', score: 10, spawnRate: 0 },
+      { name: 'apple', displayName: 'Apple', radius: 65, color: '#27ae60', score: 15, spawnRate: 0 },
+      { name: 'pear', displayName: 'Pear', radius: 75, color: '#f1c40f', score: 21, spawnRate: 0 },
+      { name: 'watermelon', displayName: 'Watermelon', radius: 90, color: '#2ecc71', score: 28, spawnRate: 0 }
+    ];
+    DROP_WEIGHTS = [50, 35, 15];
+    DROPPABLE_INDICES = [0, 1, 2];
+  }
+}
+
+function draw() {
+  background('#1a1a2e');
+
+  switch (gameState) {
+    case 'menu':
+      drawMenu();
+      break;
+    case 'playing':
+      updateGame();
+      drawGame();
+      break;
+    case 'win':
+      drawGame();
+      drawWinScreen();
+      break;
+    case 'lose':
+      drawGame();
+      drawLoseScreen();
+      break;
+  }
+}
+
+// ============================================================================
+// CANVAS SIZING
+// ============================================================================
+
+function calculateCanvasSize() {
+  // Fit to window while maintaining playable proportions
+  let maxWidth = windowWidth;
+  let maxHeight = windowHeight;
+
+  // Target aspect ratio (slightly taller than wide for mobile)
+  let targetRatio = 0.6;
+
+  if (maxWidth / maxHeight > targetRatio) {
+    // Window is wider than target - use height as constraint
+    canvasHeight = maxHeight;
+    canvasWidth = Math.floor(canvasHeight * targetRatio);
+  } else {
+    // Window is taller than target - use width as constraint
+    canvasWidth = maxWidth;
+    canvasHeight = Math.floor(canvasWidth / targetRatio);
+  }
+
+  // Ensure minimum size
+  canvasWidth = Math.max(canvasWidth, 300);
+  canvasHeight = Math.max(canvasHeight, 500);
+
+  // Calculate game area bounds (left side has extra space for evolution chart)
+  gameAreaLeft = LEFT_PANEL_WIDTH;
+  gameAreaRight = canvasWidth - WALL_THICKNESS;
+  gameAreaTop = DANGER_LINE_Y;
+  gameAreaBottom = canvasHeight - WALL_THICKNESS;
+  gameAreaWidth = gameAreaRight - gameAreaLeft;
+}
+
+function windowResized() {
+  calculateCanvasSize();
+  resizeCanvas(canvasWidth, canvasHeight);
+  if (previewX) {
+    previewX = constrain(previewX, gameAreaLeft + 50, gameAreaRight - 50);
+  }
+}
+
+// ============================================================================
+// MENU
+// ============================================================================
+
+function drawMenu() {
+  // Title
+  fill(255);
+  textAlign(CENTER, CENTER);
+  textSize(48);
+  text('Fruit Drop', canvasWidth / 2, canvasHeight * 0.25);
+
+  // Watermelon emoji
+  textSize(80);
+  text('\u{1F349}', canvasWidth / 2, canvasHeight * 0.4);
+
+  // High score
+  textSize(20);
+  fill('#aaa');
+  text('High Score: ' + highScore, canvasWidth / 2, canvasHeight * 0.55);
+
+  // Play button
+  let btnX = canvasWidth / 2;
+  let btnY = canvasHeight * 0.7;
+  let btnW = 160;
+  let btnH = 50;
+
+  let isHover = isMouseInRect(btnX - btnW/2, btnY - btnH/2, btnW, btnH);
+
+  fill(isHover ? '#3498db' : '#2980b9');
+  noStroke();
+  rect(btnX - btnW/2, btnY - btnH/2, btnW, btnH, 10);
+
+  fill(255);
+  textSize(24);
+  text('Play', btnX, btnY);
+
+  // Instructions
+  textSize(14);
+  fill('#888');
+  text('Tap to drop fruits', canvasWidth / 2, canvasHeight * 0.85);
+  text('Match same fruits to merge!', canvasWidth / 2, canvasHeight * 0.89);
+}
+
+// ============================================================================
+// GAME LOGIC
+// ============================================================================
+
+function startGame(mode) {
+  gameMode = mode;
+  gameState = 'playing';
+  score = 0;
+  dangerTimer = 0;
+  dangerActive = false;
+  canDrop = true;
+  lastDropTime = 0;
+
+  // Clear existing fruits
+  clearAllFruits();
+
+  // Create walls
+  createWalls();
+
+  // Pick first two fruits
+  currentFruitIndex = pickRandomDropFruit();
+  nextFruitIndex = pickRandomDropFruit();
+  previewX = canvasWidth / 2;
+}
+
+function continueToEndless() {
+  // Preserve current board state, just change mode
+  gameMode = 'endless';
+  gameState = 'playing';
+  dangerTimer = 0;
+  dangerActive = false;
+  canDrop = true;
+  // Score and fruits remain as-is
+}
+
+function updateGame() {
+  // Process merge queue (from physics callbacks)
+  processMergeQueue();
+
+  // Update drop cooldown
+  if (!canDrop && millis() - lastDropTime > DROP_COOLDOWN) {
+    canDrop = true;
+  }
+
+  // Check danger zone
+  checkDangerZone();
+
+  // Clean up any fruits that fell off screen (shouldn't happen, but safety)
+  cleanupFruits();
+}
+
+function checkDangerZone() {
+  // Check if any fruit is above danger line
+  let fruitAboveLine = false;
+
+  for (let fruit of fruits) {
+    let radius = fruit.fruitRadius || FRUITS[fruit.fruitIndex].radius;
+    if (fruit && fruit.y - radius < DANGER_LINE_Y) {
+      // Only count settled fruits (not recently dropped)
+      if (fruit.age && millis() - fruit.age > 500) {
+        fruitAboveLine = true;
+        break;
+      }
+    }
+  }
+
+  if (fruitAboveLine) {
+    if (!dangerActive) {
+      dangerActive = true;
+      dangerTimer = millis();
+    } else {
+      let elapsed = millis() - dangerTimer;
+      if (elapsed >= DANGER_TIME) {
+        gameOver();
+      }
+    }
+  } else {
+    dangerActive = false;
+    dangerTimer = 0;
+  }
+}
+
+function gameOver() {
+  gameState = 'lose';
+  updateHighScore();
+}
+
+function winGame() {
+  gameState = 'win';
+  updateHighScore();
+}
+
+// ============================================================================
+// FRUIT MANAGEMENT
+// ============================================================================
+
+function pickRandomDropFruit() {
+  // Weighted random selection from droppable fruits only
+  if (DROP_WEIGHTS.length === 0 || DROPPABLE_INDICES.length === 0) {
+    return 0; // Fallback to first fruit
+  }
+
+  let totalWeight = DROP_WEIGHTS.reduce((a, b) => a + b, 0);
+  let rand = random(totalWeight);
+  let cumulative = 0;
+
+  for (let i = 0; i < DROP_WEIGHTS.length; i++) {
+    cumulative += DROP_WEIGHTS[i];
+    if (rand < cumulative) {
+      return DROPPABLE_INDICES[i]; // Return actual fruit index
+    }
+  }
+  return DROPPABLE_INDICES[0];
+}
+
+function dropFruit() {
+  if (!canDrop || gameState !== 'playing') return;
+
+  // Drop the current fruit
+  let fruit = createFruitSprite(currentFruitIndex, previewX, DANGER_LINE_Y - 30);
+  fruit.age = millis(); // Track when dropped
+  fruits.push(fruit);
+
+  canDrop = false;
+  lastDropTime = millis();
+
+  // Rotate queue: next becomes current, pick new next
+  currentFruitIndex = nextFruitIndex;
+  nextFruitIndex = pickRandomDropFruit();
+}
+
+function createFruitSprite(fruitIndex, x, y) {
+  let fruitData = FRUITS[fruitIndex];
+  let diameter = fruitData.radius * 2;
+
+  // Create circle sprite with correct diameter
+  let sprite = new Sprite(x, y, diameter);
+  sprite.diameter = diameter;
+  sprite.collider = 'dynamic';
+  sprite.bounciness = FRUIT_BOUNCINESS;
+  sprite.friction = FRUIT_FRICTION;
+  sprite.rotationLock = false;
+  sprite.fruitIndex = fruitIndex;
+  sprite.fruitRadius = fruitData.radius; // Store for our custom drawing
+  sprite.markedForMerge = false;
+
+  // Hide p5play's default rendering - we draw manually
+  sprite.visible = false;
+
+  // Add to fruits group
+  fruitsGroup.add(sprite);
+
+  // Set up collision callback with other fruits
+  sprite.collides(fruitsGroup, handleCollision);
+
+  return sprite;
+}
+
+function handleCollision(spriteA, spriteB) {
+  // Check if both sprites are fruits with same index
+  if (spriteA.fruitIndex !== undefined &&
+      spriteB.fruitIndex !== undefined &&
+      spriteA.fruitIndex === spriteB.fruitIndex &&
+      !spriteA.markedForMerge &&
+      !spriteB.markedForMerge) {
+
+    // Mark both for merge
+    spriteA.markedForMerge = true;
+    spriteB.markedForMerge = true;
+
+    // Add to merge queue (process outside physics step)
+    mergeQueue.push({
+      a: spriteA,
+      b: spriteB,
+      index: spriteA.fruitIndex
+    });
+  }
+}
+
+function processMergeQueue() {
+  while (mergeQueue.length > 0) {
+    let merge = mergeQueue.shift();
+
+    // Verify sprites still exist
+    if (!merge.a || !merge.b) continue;
+    if (!fruits.includes(merge.a) || !fruits.includes(merge.b)) continue;
+
+    // Calculate merge position (average of both fruits)
+    let mergeX = (merge.a.x + merge.b.x) / 2;
+    let mergeY = (merge.a.y + merge.b.y) / 2;
+
+    // Add score
+    score += FRUITS[merge.index].score;
+
+    // Remove old fruits
+    removeFruit(merge.a);
+    removeFruit(merge.b);
+
+    // Create new fruit (if not already max size)
+    if (merge.index < FRUITS.length - 1) {
+      let newFruit = createFruitSprite(merge.index + 1, mergeX, mergeY);
+      newFruit.age = millis();
+      fruits.push(newFruit);
+    } else {
+      // Created a watermelon via merge - check for win in normal mode
+      if (gameMode === 'normal') {
+        winGame();
+        return;
+      }
+    }
+  }
+}
+
+function removeFruit(fruit) {
+  let index = fruits.indexOf(fruit);
+  if (index > -1) {
+    fruits.splice(index, 1);
+    fruitsGroup.remove(fruit);
+    fruit.remove();
+  }
+}
+
+function clearAllFruits() {
+  for (let fruit of fruits) {
+    if (fruit) fruit.remove();
+  }
+  fruits = [];
+  mergeQueue = [];
+
+  // Recreate fruits group
+  if (fruitsGroup) {
+    fruitsGroup.removeAll();
+  }
+  fruitsGroup = new Group();
+}
+
+function cleanupFruits() {
+  // Remove any fruits that somehow went off screen
+  for (let i = fruits.length - 1; i >= 0; i--) {
+    let fruit = fruits[i];
+    if (fruit && (fruit.y > canvasHeight + 200 || fruit.x < -200 || fruit.x > canvasWidth + 200)) {
+      removeFruit(fruit);
+    }
+  }
+}
+
+// ============================================================================
+// WALLS
+// ============================================================================
+
+function createWalls() {
+  // Remove old walls if any
+  for (let wall of walls) {
+    if (wall) wall.remove();
+  }
+  walls = [];
+
+  // Left wall (thicker to accommodate evolution chart)
+  let leftWall = new Sprite(LEFT_PANEL_WIDTH / 2, canvasHeight / 2, LEFT_PANEL_WIDTH, canvasHeight);
+  leftWall.collider = 'static';
+  leftWall.visible = false;
+  walls.push(leftWall);
+
+  // Right wall
+  let rightWall = new Sprite(canvasWidth - WALL_THICKNESS / 2, canvasHeight / 2, WALL_THICKNESS, canvasHeight);
+  rightWall.collider = 'static';
+  rightWall.visible = false;
+  walls.push(rightWall);
+
+  // Bottom wall
+  let bottomWall = new Sprite(canvasWidth / 2, canvasHeight - WALL_THICKNESS / 2, canvasWidth, WALL_THICKNESS);
+  bottomWall.collider = 'static';
+  bottomWall.visible = false;
+  walls.push(bottomWall);
+}
+
+// ============================================================================
+// DRAWING
+// ============================================================================
+
+function drawGame() {
+  // Draw walls
+  fill('#34495e');
+  noStroke();
+  rect(0, 0, LEFT_PANEL_WIDTH, canvasHeight); // Left (wider for evolution chart)
+  rect(canvasWidth - WALL_THICKNESS, 0, WALL_THICKNESS, canvasHeight); // Right
+  rect(0, canvasHeight - WALL_THICKNESS, canvasWidth, WALL_THICKNESS); // Bottom
+
+  // Draw danger line
+  drawDangerLine();
+
+  // Draw fruits
+  for (let fruit of fruits) {
+    if (fruit) {
+      drawFruit(fruit);
+    }
+  }
+
+  // Draw preview fruit (only when playing and can drop)
+  if (gameState === 'playing') {
+    drawPreviewFruit();
+  }
+
+  // Draw score
+  drawScore();
+
+  // Draw next fruit indicator
+  drawNextFruitIndicator();
+
+  // Draw evolution chart on left side
+  drawEvolutionChart();
+}
+
+function drawDangerLine() {
+  let flashRed = false;
+
+  if (dangerActive) {
+    let elapsed = millis() - dangerTimer;
+    if (elapsed > DANGER_TIME - WARNING_TIME) {
+      // Flash during last second
+      flashRed = Math.floor(millis() / 100) % 2 === 0;
+    }
+  }
+
+  stroke(flashRed ? '#ff0000' : '#ff6b6b');
+  strokeWeight(2);
+  drawingContext.setLineDash([10, 10]);
+  line(LEFT_PANEL_WIDTH, DANGER_LINE_Y, canvasWidth - WALL_THICKNESS, DANGER_LINE_Y);
+  drawingContext.setLineDash([]);
+
+  // Danger label
+  noStroke();
+  fill(flashRed ? '#ff0000' : '#ff6b6b');
+  textAlign(LEFT, CENTER);
+  textSize(12);
+  text('DANGER', LEFT_PANEL_WIDTH + 5, DANGER_LINE_Y - 12);
+
+  // Show timer if danger active
+  if (dangerActive) {
+    let remaining = Math.max(0, DANGER_TIME - (millis() - dangerTimer)) / 1000;
+    textAlign(RIGHT, CENTER);
+    text(remaining.toFixed(1) + 's', canvasWidth - WALL_THICKNESS - 5, DANGER_LINE_Y - 12);
+  }
+}
+
+function drawFruit(fruit) {
+  let fruitData = FRUITS[fruit.fruitIndex];
+  let img = fruitImages[fruitData.name];
+  let radius = fruit.fruitRadius || fruitData.radius;
+  let diameter = radius * 2;
+
+  push();
+  translate(fruit.x, fruit.y);
+  rotate(fruit.rotation);
+
+  if (img) {
+    // Draw image
+    imageMode(CENTER);
+    image(img, 0, 0, diameter, diameter);
+  } else {
+    // Draw colored circle with label
+    fill(fruitData.color);
+    noStroke();
+    circle(0, 0, diameter);
+
+    // Draw fruit display name, scaled to fit inside circle
+    fill(255);
+    textAlign(CENTER, CENTER);
+    let maxTextWidth = diameter * 0.8;
+    let fontSize = Math.min(radius * 0.5, 16);
+    textSize(fontSize);
+
+    // Use displayName if available, fallback to name
+    let displayName = fruitData.displayName || fruitData.name;
+    while (textWidth(displayName) > maxTextWidth && fontSize > 6) {
+      fontSize -= 1;
+      textSize(fontSize);
+    }
+
+    text(displayName, 0, 0);
+  }
+
+  pop();
+}
+
+function drawPreviewFruit() {
+  let fruitData = FRUITS[currentFruitIndex];
+  let alpha = canDrop ? 255 : 100;
+  let radius = fruitData.radius;
+  let diameter = radius * 2;
+
+  // Draw drop guide line
+  stroke(255, 50);
+  strokeWeight(1);
+  drawingContext.setLineDash([5, 5]);
+  line(previewX, DANGER_LINE_Y - 30, previewX, gameAreaBottom);
+  drawingContext.setLineDash([]);
+
+  // Draw preview fruit
+  let img = fruitImages[fruitData.name];
+
+  push();
+  translate(previewX, DANGER_LINE_Y - 30 - radius);
+
+  if (img) {
+    tint(255, alpha);
+    imageMode(CENTER);
+    image(img, 0, 0, diameter, diameter);
+    noTint();
+  } else {
+    let c = color(fruitData.color);
+    c.setAlpha(alpha);
+    fill(c);
+    noStroke();
+    circle(0, 0, diameter);
+
+    // Draw fruit display name
+    fill(255, alpha);
+    textAlign(CENTER, CENTER);
+    let fontSize = Math.min(radius * 0.5, 16);
+    textSize(fontSize);
+    let maxTextWidth = diameter * 0.8;
+    let displayName = fruitData.displayName || fruitData.name;
+    while (textWidth(displayName) > maxTextWidth && fontSize > 6) {
+      fontSize -= 1;
+      textSize(fontSize);
+    }
+    text(displayName, 0, 0);
+  }
+
+  pop();
+}
+
+function drawScore() {
+  // Score background
+  fill(0, 150);
+  noStroke();
+  rect(canvasWidth / 2 - 60, 10, 120, 35, 8);
+
+  // Score text
+  fill(255);
+  textAlign(CENTER, CENTER);
+  textSize(20);
+  text(score, canvasWidth / 2, 27);
+
+  // High score
+  textSize(12);
+  fill('#aaa');
+  text('Best: ' + highScore, canvasWidth / 2, 55);
+
+  // Mode indicator
+  if (gameMode === 'endless') {
+    fill('#f39c12');
+    textSize(10);
+    text('ENDLESS', canvasWidth / 2, 70);
+  }
+}
+
+function drawNextFruitIndicator() {
+  // Small box showing next fruit
+  let boxX = canvasWidth - 45;
+  let boxY = 50;
+  let boxW = 70;
+  let boxH = 70;
+
+  fill(0, 150);
+  noStroke();
+  rect(boxX - boxW/2, boxY - boxH/2 + 5, boxW, boxH, 8);
+
+  fill('#aaa');
+  textAlign(CENTER, CENTER);
+  textSize(10);
+  text('NEXT', boxX, boxY - 18);
+
+  // Draw preview of next fruit at a readable size
+  let fruitData = FRUITS[nextFruitIndex];
+  let displayRadius = Math.min(22, fruitData.radius * 0.6);
+  let displayDiameter = displayRadius * 2;
+
+  fill(fruitData.color);
+  noStroke();
+  circle(boxX, boxY + 8, displayDiameter);
+
+  // Draw fruit name inside
+  fill(255);
+  textAlign(CENTER, CENTER);
+  let fontSize = Math.min(displayRadius * 0.5, 10);
+  textSize(fontSize);
+  let name = fruitData.name;
+  let maxW = displayDiameter * 0.8;
+  while (textWidth(name) > maxW && fontSize > 5) {
+    fontSize -= 1;
+    textSize(fontSize);
+  }
+  text(name, boxX, boxY + 8);
+}
+
+function drawEvolutionChart() {
+  // Draw circular evolution chart in the left panel
+  let chartStartY = DANGER_LINE_Y + 15;
+
+  // Calculate available height for the chart
+  let availableHeight = canvasHeight - chartStartY - WALL_THICKNESS - 10;
+  let spacing = Math.min(50, availableHeight / FRUITS.length);
+  let maxDisplayRadius = 12;
+
+  // Chart positioned in the left panel
+  let panelX = 5;
+  let panelW = LEFT_PANEL_WIDTH - 10;
+
+  // Draw each fruit in the evolution chain
+  for (let i = 0; i < FRUITS.length; i++) {
+    let fruitData = FRUITS[i];
+    let y = chartStartY + 10 + i * spacing;
+
+    // Scale radius for display (proportional to actual size)
+    let displayRadius = map(fruitData.radius, 20, 90, 5, maxDisplayRadius);
+
+    // Draw fruit circle
+    let circleX = panelX + 18;
+    fill(fruitData.color);
+    noStroke();
+    circle(circleX, y, displayRadius * 2);
+
+    // Draw arrow to next fruit (except for watermelon)
+    if (i < FRUITS.length - 1) {
+      let arrowY = y + displayRadius + 2;
+      let nextDisplayRadius = map(FRUITS[i + 1].radius, 20, 90, 5, maxDisplayRadius);
+      let arrowEndY = chartStartY + 10 + (i + 1) * spacing - nextDisplayRadius - 2;
+
+      stroke('#666');
+      strokeWeight(1);
+      line(circleX, arrowY, circleX, arrowEndY);
+
+      // Small arrow head
+      fill('#666');
+      noStroke();
+      triangle(
+        circleX, arrowEndY + 2,
+        circleX - 2, arrowEndY - 1,
+        circleX + 2, arrowEndY - 1
+      );
+    }
+
+    // Draw score value on the right
+    fill('#aaa');
+    noStroke();
+    textAlign(LEFT, CENTER);
+    textSize(8);
+    text('+' + fruitData.score, circleX + maxDisplayRadius + 3, y);
+  }
+}
+
+// ============================================================================
+// WIN SCREEN
+// ============================================================================
+
+function drawWinScreen() {
+  // Overlay
+  fill(0, 180);
+  rect(0, 0, canvasWidth, canvasHeight);
+
+  // Win message
+  fill('#2ecc71');
+  textAlign(CENTER, CENTER);
+  textSize(36);
+  text('YOU WIN!', canvasWidth / 2, canvasHeight * 0.25);
+
+  // Watermelon emoji
+  textSize(60);
+  text('\u{1F349}', canvasWidth / 2, canvasHeight * 0.38);
+
+  // Score
+  fill(255);
+  textSize(24);
+  text('Score: ' + score, canvasWidth / 2, canvasHeight * 0.52);
+
+  textSize(16);
+  fill('#aaa');
+  text('High Score: ' + highScore, canvasWidth / 2, canvasHeight * 0.58);
+
+  // Play Again button
+  let btn1X = canvasWidth / 2;
+  let btn1Y = canvasHeight * 0.7;
+  let btnW = 180;
+  let btnH = 45;
+
+  let hover1 = isMouseInRect(btn1X - btnW/2, btn1Y - btnH/2, btnW, btnH);
+  fill(hover1 ? '#3498db' : '#2980b9');
+  noStroke();
+  rect(btn1X - btnW/2, btn1Y - btnH/2, btnW, btnH, 8);
+
+  fill(255);
+  textSize(18);
+  text('Play Again', btn1X, btn1Y);
+
+  // Continue in Endless button
+  let btn2Y = canvasHeight * 0.8;
+  let hover2 = isMouseInRect(btn1X - btnW/2, btn2Y - btnH/2, btnW, btnH);
+  fill(hover2 ? '#e67e22' : '#d35400');
+  rect(btn1X - btnW/2, btn2Y - btnH/2, btnW, btnH, 8);
+
+  fill(255);
+  textSize(16);
+  text('Continue in Endless', btn1X, btn2Y);
+}
+
+// ============================================================================
+// LOSE SCREEN
+// ============================================================================
+
+function drawLoseScreen() {
+  // Overlay
+  fill(0, 180);
+  rect(0, 0, canvasWidth, canvasHeight);
+
+  // Game over message
+  fill('#e74c3c');
+  textAlign(CENTER, CENTER);
+  textSize(36);
+  text('GAME OVER', canvasWidth / 2, canvasHeight * 0.3);
+
+  // Score
+  fill(255);
+  textSize(24);
+  text('Score: ' + score, canvasWidth / 2, canvasHeight * 0.45);
+
+  textSize(16);
+  fill('#aaa');
+  text('High Score: ' + highScore, canvasWidth / 2, canvasHeight * 0.52);
+
+  // Try Again button
+  let btn1X = canvasWidth / 2;
+  let btn1Y = canvasHeight * 0.65;
+  let btnW = 160;
+  let btnH = 45;
+
+  let hover1 = isMouseInRect(btn1X - btnW/2, btn1Y - btnH/2, btnW, btnH);
+  fill(hover1 ? '#3498db' : '#2980b9');
+  noStroke();
+  rect(btn1X - btnW/2, btn1Y - btnH/2, btnW, btnH, 8);
+
+  fill(255);
+  textSize(18);
+  text('Try Again', btn1X, btn1Y);
+
+  // Main Menu button
+  let btn2Y = canvasHeight * 0.77;
+  let hover2 = isMouseInRect(btn1X - btnW/2, btn2Y - btnH/2, btnW, btnH);
+  fill(hover2 ? '#7f8c8d' : '#95a5a6');
+  rect(btn1X - btnW/2, btn2Y - btnH/2, btnW, btnH, 8);
+
+  fill(255);
+  text('Main Menu', btn1X, btn2Y);
+}
+
+// ============================================================================
+// INPUT HANDLING
+// ============================================================================
+
+function mousePressed() {
+  handleInput(mouseX, mouseY);
+  return false; // Prevent default
+}
+
+function mouseClicked() {
+  handleInput(mouseX, mouseY);
+  return false; // Prevent default
+}
+
+function mouseMoved() {
+  if (gameState === 'playing') {
+    previewX = constrain(mouseX, gameAreaLeft + FRUITS[currentFruitIndex].radius,
+                                  gameAreaRight - FRUITS[currentFruitIndex].radius);
+  }
+}
+
+function touchStarted() {
+  if (touches.length > 0) {
+    handleInput(touches[0].x, touches[0].y);
+  }
+  return false; // Prevent default
+}
+
+function touchMoved() {
+  if (gameState === 'playing' && touches.length > 0) {
+    previewX = constrain(touches[0].x, gameAreaLeft + FRUITS[currentFruitIndex].radius,
+                                        gameAreaRight - FRUITS[currentFruitIndex].radius);
+  }
+  return false; // Prevent default
+}
+
+function handleInput(x, y) {
+  switch (gameState) {
+    case 'menu':
+      handleMenuInput(x, y);
+      break;
+    case 'playing':
+      handleGameInput(x, y);
+      break;
+    case 'win':
+      handleWinInput(x, y);
+      break;
+    case 'lose':
+      handleLoseInput(x, y);
+      break;
+  }
+}
+
+function handleMenuInput(x, y) {
+  // Check play button
+  let btnX = canvasWidth / 2;
+  let btnY = canvasHeight * 0.7;
+  let btnW = 160;
+  let btnH = 50;
+
+  if (isPointInRect(x, y, btnX - btnW/2, btnY - btnH/2, btnW, btnH)) {
+    startGame('normal');
+  }
+}
+
+function handleGameInput(x, y) {
+  // Tap anywhere in the game area to drop at that x position
+  if (x > gameAreaLeft && x < gameAreaRight && canDrop) {
+    previewX = constrain(x, gameAreaLeft + FRUITS[currentFruitIndex].radius,
+                            gameAreaRight - FRUITS[currentFruitIndex].radius);
+    dropFruit();
+  }
+}
+
+function handleWinInput(x, y) {
+  let btnX = canvasWidth / 2;
+  let btn1Y = canvasHeight * 0.7;
+  let btn2Y = canvasHeight * 0.8;
+  let btnW = 180;
+  let btnH = 45;
+
+  // Play Again
+  if (isPointInRect(x, y, btnX - btnW/2, btn1Y - btnH/2, btnW, btnH)) {
+    startGame('normal');
+  }
+
+  // Continue in Endless
+  if (isPointInRect(x, y, btnX - btnW/2, btn2Y - btnH/2, btnW, btnH)) {
+    continueToEndless();
+  }
+}
+
+function handleLoseInput(x, y) {
+  let btnX = canvasWidth / 2;
+  let btn1Y = canvasHeight * 0.65;
+  let btn2Y = canvasHeight * 0.77;
+  let btnW = 160;
+  let btnH = 45;
+
+  // Try Again (restarts as Normal Mode)
+  if (isPointInRect(x, y, btnX - btnW/2, btn1Y - btnH/2, btnW, btnH)) {
+    startGame('normal');
+  }
+
+  // Main Menu
+  if (isPointInRect(x, y, btnX - btnW/2, btn2Y - btnH/2, btnW, btnH)) {
+    gameState = 'menu';
+    clearAllFruits();
+    // Remove walls too
+    for (let wall of walls) {
+      if (wall) wall.remove();
+    }
+    walls = [];
+  }
+}
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+function isPointInRect(px, py, rx, ry, rw, rh) {
+  return px >= rx && px <= rx + rw && py >= ry && py <= ry + rh;
+}
+
+function isMouseInRect(rx, ry, rw, rh) {
+  return isPointInRect(mouseX, mouseY, rx, ry, rw, rh);
+}
+
+function loadHighScore() {
+  try {
+    let saved = localStorage.getItem('fruitDropHighScore');
+    highScore = saved ? parseInt(saved) : 0;
+  } catch (e) {
+    highScore = 0;
+  }
+}
+
+function updateHighScore() {
+  if (score > highScore) {
+    highScore = score;
+    try {
+      localStorage.setItem('fruitDropHighScore', highScore.toString());
+    } catch (e) {
+      // localStorage not available
+    }
+  }
+}
+
+// ============================================================================
+// END OF GAME CODE
+// ============================================================================
+  </script>
+</body>
+</html>
