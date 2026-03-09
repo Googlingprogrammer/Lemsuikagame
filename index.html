@@ -137,30 +137,37 @@ let walls = [];
 
 function preload() {
   // Load fruit images from config
+  // Load fruit images with fallback to color circles if loading fails
   // Note: p5play wraps loadImage and may call error callback with the image on success
-  // We work around this by checking if the "error" is actually a valid image
   if (typeof GAME_CONFIG !== 'undefined' && GAME_CONFIG.fruits) {
     for (let fruit of GAME_CONFIG.fruits) {
+      // Initialize to null (fallback to color circle)
+      fruitImages[fruit.name] = null;
+
       if (fruit.image) {
-        console.log('Loading image for:', fruit.name);
-        fruitImages[fruit.name] = loadImage(
-          fruit.image,
-          (img) => {
-            console.log('Image loaded:', fruit.name, img.width + 'x' + img.height);
-          },
-          (errOrImg) => {
-            // p5play bug workaround: check if "error" is actually a loaded image
-            if (errOrImg && errOrImg.width && errOrImg.height) {
-              console.log('Image loaded (via p5play):', fruit.name, errOrImg.width + 'x' + errOrImg.height);
-              fruitImages[fruit.name] = errOrImg;
-            } else {
-              console.error('Failed to load image for:', fruit.name);
-              fruitImages[fruit.name] = null;
+        try {
+          console.log('Loading image for:', fruit.name);
+          let loadedImg = loadImage(
+            fruit.image,
+            (img) => {
+              console.log('Image loaded:', fruit.name, img.width + 'x' + img.height);
+              fruitImages[fruit.name] = img;
+            },
+            (errOrImg) => {
+              // p5play bug workaround: check if "error" is actually a loaded image
+              if (errOrImg && errOrImg.width && errOrImg.height) {
+                console.log('Image loaded (via p5play):', fruit.name, errOrImg.width + 'x' + errOrImg.height);
+                fruitImages[fruit.name] = errOrImg;
+              } else {
+                console.warn('Failed to load image for:', fruit.name, '- using color fallback');
+                fruitImages[fruit.name] = null;
+              }
             }
-          }
-        );
-      } else {
-        fruitImages[fruit.name] = null;
+          );
+        } catch (e) {
+          console.warn('Error loading image for:', fruit.name, e, '- using color fallback');
+          fruitImages[fruit.name] = null;
+        }
       }
     }
   }
@@ -172,23 +179,31 @@ function preload() {
   }
 
 
-  // Load background image from UI config
+  // Load background image from UI config with fallback to color
   // Note: p5play wraps loadImage and may call error callback with the image on success
   if (typeof UI_CONFIG !== 'undefined' && UI_CONFIG.background && UI_CONFIG.background.image) {
-    backgroundImage = loadImage(
-      UI_CONFIG.background.image,
-      (img) => console.log('Background image loaded:', img.width + 'x' + img.height),
-      (errOrImg) => {
-        // p5play bug workaround: check if "error" is actually a loaded image
-        if (errOrImg && errOrImg.width && errOrImg.height) {
-          console.log('Background image loaded (via p5play):', errOrImg.width + 'x' + errOrImg.height);
-          backgroundImage = errOrImg;
-        } else {
-          console.error('Failed to load background image');
-          backgroundImage = null;
+    try {
+      backgroundImage = loadImage(
+        UI_CONFIG.background.image,
+        (img) => {
+          console.log('Background image loaded:', img.width + 'x' + img.height);
+          backgroundImage = img;
+        },
+        (errOrImg) => {
+          // p5play bug workaround: check if "error" is actually a loaded image
+          if (errOrImg && errOrImg.width && errOrImg.height) {
+            console.log('Background image loaded (via p5play):', errOrImg.width + 'x' + errOrImg.height);
+            backgroundImage = errOrImg;
+          } else {
+            console.warn('Failed to load background image - using color fallback');
+            backgroundImage = null;
+          }
         }
-      }
-    );
+      );
+    } catch (e) {
+      console.warn('Error loading background image:', e, '- using color fallback');
+      backgroundImage = null;
+    }
   }
 }
 
@@ -1174,7 +1189,7 @@ function drawFruit(fruit) {
   translate(fruit.x, fruit.y);
   rotate(fruit.rotation);
 
-  if (img) {
+  if (img && img.width && img.height) {
     // Draw image clipped to circle
     drawingContext.save();
     drawingContext.beginPath();
@@ -1185,7 +1200,7 @@ function drawFruit(fruit) {
     image(img, 0, 0, diameter, diameter);
     drawingContext.restore();
   } else {
-    // Draw colored circle with label
+    // Draw colored circle with label (fallback)
     fill(fruitData.color);
     noStroke();
     circle(0, 0, diameter);
@@ -1229,7 +1244,7 @@ function drawPreviewFruit() {
   push();
   translate(previewX, DANGER_LINE_Y - 30 - radius);
 
-  if (img) {
+  if (img && img.width && img.height) {
     // Draw image clipped to circle
     drawingContext.save();
     drawingContext.beginPath();
@@ -1242,6 +1257,7 @@ function drawPreviewFruit() {
     noTint();
     drawingContext.restore();
   } else {
+    // Fallback to colored circle
     let c = color(fruitData.color);
     c.setAlpha(alpha);
     fill(c);
@@ -1319,7 +1335,7 @@ function drawNextFruitIndicator() {
   push();
   translate(boxX, boxY + 8);
 
-  if (img) {
+  if (img && img.width && img.height) {
     // Draw image clipped to circle
     drawingContext.save();
     drawingContext.beginPath();
@@ -1330,7 +1346,7 @@ function drawNextFruitIndicator() {
     image(img, 0, 0, displayDiameter, displayDiameter);
     drawingContext.restore();
   } else {
-    // Draw colored circle with name
+    // Fallback: Draw colored circle with name
     fill(fruitData.color);
     noStroke();
     circle(0, 0, displayDiameter);
