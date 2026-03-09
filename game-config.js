@@ -120,7 +120,7 @@ const GAME_CONFIG = {
   // -------------------------------------------------------------------------
 
   // Time window to chain combos (ms)
-  comboInterval: 2000,
+  comboInterval: 5000,
 
   // Maximum bonus points per combo hit
   comboBonusCap: 50
