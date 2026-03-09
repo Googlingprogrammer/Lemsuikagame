@@ -81,7 +81,7 @@ let DROPPABLE_INDICES = []; // Indices of fruits that can be dropped
 // ============================================================================
 // DEBUG
 // ============================================================================
-const bDebug = false; // Set to false to disable debug overlay
+const bDebug = true; // Set to false to disable debug overlay
 
 // ============================================================================
 // GAME CONSTANTS
@@ -279,7 +279,7 @@ function loadConfig() {
     if (GAME_CONFIG.gravity) GRAVITY = GAME_CONFIG.gravity;
     if (GAME_CONFIG.bounciness) FRUIT_BOUNCINESS = GAME_CONFIG.bounciness;
     if (GAME_CONFIG.friction) FRUIT_FRICTION = GAME_CONFIG.friction;
-    if (GAME_CONFIG.fruitScale) FRUIT_SCALE = GAME_CONFIG.fruitScale;
+    // Note: FRUIT_SCALE is calculated in calculateCanvasSize() using GAME_CONFIG.fruitScale as base
     if (GAME_CONFIG.comboInterval) COMBO_INTERVAL = GAME_CONFIG.comboInterval;
     if (GAME_CONFIG.comboBonusCap) COMBO_BONUS_CAP = GAME_CONFIG.comboBonusCap;
   } else {
@@ -415,7 +415,8 @@ function drawDebug() {
   y += lineHeight;
   text('Fruits: ' + fruits.length, 10, y);
   y += lineHeight;
-  text('Scale: ' + FRUIT_SCALE, 10, y);
+  let configScale = (typeof GAME_CONFIG !== 'undefined' && GAME_CONFIG.fruitScale) ? GAME_CONFIG.fruitScale : 1.0;
+  text('Scale: ' + FRUIT_SCALE.toFixed(2) + ' (cfg:' + configScale + ')', 10, y);
 
   pop();
 }
@@ -423,6 +424,9 @@ function drawDebug() {
 // ============================================================================
 // CANVAS SIZING
 // ============================================================================
+
+// Reference width for fruit scaling (fruits are designed for this width)
+const REFERENCE_WIDTH = 280;
 
 function calculateCanvasSize() {
   // Fit to window while maintaining fixed aspect ratio for consistent gameplay
@@ -452,6 +456,12 @@ function calculateCanvasSize() {
   gameAreaTop = DANGER_LINE_Y;
   gameAreaBottom = canvasHeight - WALL_THICKNESS;
   gameAreaWidth = gameAreaRight - gameAreaLeft;
+
+  // Calculate responsive fruit scale based on play area width
+  // This ensures fruit-to-playspace ratio stays consistent across devices
+  let baseScale = (typeof GAME_CONFIG !== 'undefined' && GAME_CONFIG.fruitScale !== undefined) ? GAME_CONFIG.fruitScale : 1.0;
+  let responsiveScale = gameAreaWidth / (REFERENCE_WIDTH - WALL_THICKNESS * 2);
+  FRUIT_SCALE = baseScale * responsiveScale;
 }
 
 function windowResized() {
