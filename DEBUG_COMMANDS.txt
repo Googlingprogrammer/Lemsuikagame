@@ -1,0 +1,96 @@
+============================================
+DEBUG COMMANDS - Run in Browser Console (F12)
+============================================
+
+=== GAME STATE ===
+
+// Skip to Game Over screen
+gameOver();
+
+// Skip to Victory screen
+winGame();
+
+// Go back to menu
+gameState = 'menu'; clearAllFruits();
+
+// Start a new game
+startGame('normal');
+
+// Start endless mode
+startGame('endless');
+
+
+=== FRUIT SPAWNING ===
+
+// Set current fruit to spawn (0-7):
+// 0=Cherry, 1=Strawberry, 2=Grape, 3=Orange
+// 4=Apple, 5=Peach, 6=Pear, 7=Watermelon
+
+currentFruitIndex = 0;  // Next drop will be Cherry
+currentFruitIndex = 7;  // Next drop will be Watermelon
+
+// Set next fruit preview
+nextFruitIndex = 5;     // Preview shows Peach
+
+// Always spawn same fruit (run before each drop)
+currentFruitIndex = 7; nextFruitIndex = 7;
+
+
+=== SCORE ===
+
+// Set score directly
+score = 1000;
+
+// Set high score
+highScore = 9999;
+
+// Add points
+score += 500;
+
+
+=== LEADERBOARD ===
+
+// Open leaderboard
+openLeaderboard();
+
+// Open name input (with score 999)
+promptNameInput(999);
+
+// Clear leaderboard data locally
+leaderboardData = [];
+
+// Force refresh leaderboard
+fetchLeaderboard();
+
+
+=== DANGER ZONE ===
+
+// Disable danger timer (won't game over)
+dangerActive = false; dangerTimer = 0;
+
+// Trigger danger immediately
+dangerActive = true; dangerTimer = millis() - 9000;
+
+
+=== FRUITS ON SCREEN ===
+
+// Count fruits
+fruits.length
+
+// Remove all fruits
+clearAllFruits();
+
+// List all fruit positions
+fruits.forEach((f,i) => console.log(i, FRUITS[f.fruitIndex].name, f.x, f.y));
+
+
+=== QUICK TEST COMBOS ===
+
+// Test leaderboard submit flow with score 5000
+score = 5000; winGame();
+
+// Quick game over with score 100
+score = 100; gameOver();
+
+// Spawn watermelon for easy win
+currentFruitIndex = 6; nextFruitIndex = 6;
