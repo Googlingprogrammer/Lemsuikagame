@@ -81,7 +81,7 @@ let DROPPABLE_INDICES = []; // Indices of fruits that can be dropped
 // ============================================================================
 // DEBUG
 // ============================================================================
-const bDebug = true; // Set to false to disable debug overlay
+const bDebug = false; // Set to false to disable debug overlay
 
 // ============================================================================
 // GAME CONSTANTS
@@ -482,11 +482,18 @@ function drawMenu() {
   noStroke();
   rect(20, canvasHeight * 0.15, canvasWidth - 40, canvasHeight * 0.75, 15);
 
-  // Title
+  // Title (auto-scale to fit)
   fill(UI_CONFIG.menu.titleColor);
   textAlign(CENTER, CENTER);
-  textSize(48);
-  text('Fruit Drop', canvasWidth / 2, canvasHeight * 0.28);
+  let titleText = 'Suika của Lém & Friends';
+  let maxTitleWidth = canvasWidth - 60;
+  let titleSize = 48;
+  textSize(titleSize);
+  while (textWidth(titleText) > maxTitleWidth && titleSize > 16) {
+    titleSize -= 2;
+    textSize(titleSize);
+  }
+  text(titleText, canvasWidth / 2, canvasHeight * 0.28);
 
   // Watermelon emoji
   textSize(80);

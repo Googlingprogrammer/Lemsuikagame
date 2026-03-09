@@ -36,35 +36,44 @@ const GAME_CONFIG = {
       radius: 25,
       color: '#e91e63',
       score: 3,
-      spawnRate: 35,  // Common drop
-      image: null
+      spawnRate: 30,  // Common drop
+      image: 'images/nyahoo.jpg' 
     },
     {
       name: 'grape',
       displayName: 'Grape',
-      radius: 40,
+      radius: 30,
       color: '#9b59b6',
       score: 6,
-      spawnRate: 15,  // Rare drop
-      image: null
+      spawnRate: 20,  // Rare drop
+      image: 'images/gmail.jpg' 
     },
     {
       name: 'orange',
       displayName: 'Orange',
-      radius: 60,
+      radius: 40,
       color: '#f39c12',
       score: 10,
       spawnRate: 0,   // Cannot be dropped (merge only)
-      image: null
+      image: 'images/abacho.jpg' 
     },
     {
       name: 'apple',
       displayName: 'Apple',
-      radius: 65,
+      radius: 50,
       color: '#27ae60',
       score: 15,
       spawnRate: 0,   // Cannot be dropped (merge only)
-      image: null
+      image: 'images/brao.jpg'
+    },
+    {
+      name: 'peach',
+      displayName: 'Peach',
+      radius: 75,
+      color: '#FFCBA4',
+      score: 18,
+      spawnRate: 0,   // Cannot be dropped (merge only)
+      image: 'images/buddy.jpg'
     },
     {
       name: 'pear',
@@ -73,7 +82,7 @@ const GAME_CONFIG = {
       color: '#f1c40f',
       score: 21,
       spawnRate: 0,   // Cannot be dropped (merge only)
-      image: null
+      image: 'images/lem.jpg'
     },
     {
       name: 'watermelon',
@@ -82,7 +91,7 @@ const GAME_CONFIG = {
       color: '#2ecc71',
       score: 28,
       spawnRate: 0,   // Cannot be dropped (merge only) - this is the WIN fruit!
-      image: null
+      image: 'images/toen.jpg' 
     }
   ],
 
@@ -91,7 +100,7 @@ const GAME_CONFIG = {
   // -------------------------------------------------------------------------
 
   // Global fruit size multiplier (1.0 = default, 0.8 = 20% smaller, 1.2 = 20% larger)
-  fruitScale: 1,
+  fruitScale: 0.65,
 
   // Time in milliseconds between drops
   dropCooldown: 400,
