@@ -44,6 +44,7 @@
   <script src="sound-config.js"></script>
   <script src="ui-config.js"></script>
   <script src="leaderboard-config.js"></script>
+  <script src="rewards-config.js"></script>
 
   <script>
 // ============================================================================
@@ -66,11 +67,21 @@ let audioContext = null;
 let bgm = null;
 let bgmStarted = false;
 
+// Master mute (controls all audio)
+let allMuted = false;
+
 // Background image (loaded from UI config)
 let backgroundImage = null;
 
 // Floating score texts (for score pop-up effect)
 let floatingTexts = [];
+
+// Fireworks particles (for watermelon merge celebration)
+let fireworkParticles = [];
+
+// Floating reward images (for watermelon merge)
+let floatingRewards = [];
+let rewardImages = []; // Loaded from images/rewards folder
 
 // Reference to fruits array from config (initialized in setup)
 let FRUITS = [];
@@ -222,6 +233,32 @@ function preload() {
     } catch (e) {
       console.warn('Error loading background image:', e, '- using color fallback');
       backgroundImage = null;
+    }
+  }
+
+  // Load reward images for watermelon merge celebration
+  let rewardImageFiles = (typeof REWARDS_CONFIG !== 'undefined' && REWARDS_CONFIG.images)
+    ? REWARDS_CONFIG.images
+    : [];
+
+  for (let rewardFile of rewardImageFiles) {
+    try {
+      let img = loadImage(
+        rewardFile,
+        (loadedImg) => {
+          console.log('Reward image loaded:', rewardFile);
+          rewardImages.push(loadedImg);
+        },
+        (errOrImg) => {
+          if (errOrImg && errOrImg.width && errOrImg.height) {
+            console.log('Reward image loaded (via p5play):', rewardFile);
+            rewardImages.push(errOrImg);
+          }
+          // Silently ignore missing reward images
+        }
+      );
+    } catch (e) {
+      // Silently ignore missing reward images
     }
   }
 }
@@ -407,6 +444,11 @@ function draw() {
     drawDebug();
   }
 
+  // Draw mute button (always visible except during overlays)
+  if (!showLeaderboard && !showNameInput) {
+    drawMuteButton();
+  }
+
   // Leaderboard overlays (drawn on top of everything)
   drawLeaderboardScreen();
   drawNameInputOverlay();
@@ -579,6 +621,8 @@ function startGame(mode) {
   // Clear existing fruits and floating texts
   clearAllFruits();
   floatingTexts = [];
+  fireworkParticles = [];
+  floatingRewards = [];
   activeCombo = null;
   comboMeter.active = false;
   comboMeter.comboCount = 0;
@@ -617,6 +661,10 @@ function updateGame() {
 
   // Update floating score texts
   updateFloatingTexts();
+
+  // Update celebration effects
+  updateFireworks();
+  updateFloatingRewards();
 
   // Clean up any fruits that fell off screen (shouldn't happen, but safety)
   cleanupFruits();
@@ -775,8 +823,12 @@ function processMergeQueue() {
     // Spawn floating score text (pass fruit score for combo bonus calculation)
     spawnFloatingText('+' + points, mergeX, mergeY, FRUITS[merge.index].color, points);
 
-    // Play merge sound
-    playSound('merge');
+    // Play merge sound with pitch based on combo (higher pitch for longer combos)
+    let comboCount = activeCombo ? activeCombo.comboCount : 1;
+    let pitchConfig = SOUND_CONFIG.comboPitch || { initial: 1.0, increasePercent: 10, cap: 1.5 };
+    let pitchMultiplier = pitchConfig.initial + (comboCount - 1) * (pitchConfig.increasePercent / 100);
+    pitchMultiplier = Math.min(pitchMultiplier, pitchConfig.cap);
+    playSound('merge', pitchMultiplier);
 
     // Remove old fruits
     removeFruit(merge.a);
@@ -787,8 +839,16 @@ function processMergeQueue() {
       let newFruit = createFruitSprite(merge.index + 1, mergeX, mergeY);
       newFruit.age = millis();
       fruits.push(newFruit);
+
+      // Trigger celebration when watermelon is created (max fruit)
+      if (merge.index + 1 === FRUITS.length - 1) {
+        triggerWatermelonCelebration(mergeX, mergeY);
+      }
     } else {
-      // Created a watermelon via merge - check for win in normal mode
+      // Merged two watermelons - trigger celebration
+      triggerWatermelonCelebration(mergeX, mergeY);
+
+      // Check for win in normal mode
       if (gameMode === 'normal') {
         winGame();
         return;
@@ -1077,6 +1137,182 @@ function drawComboMeter() {
   pop();
 }
 
+// ============================================================================
+// FIREWORKS & REWARD EFFECTS (for watermelon merge)
+// ============================================================================
+
+function spawnFireworks(x, y, count = 30) {
+  for (let i = 0; i < count; i++) {
+    let angle = random(TWO_PI);
+    let speed = random(3, 8);
+    let particle = {
+      x: x,
+      y: y,
+      vx: cos(angle) * speed,
+      vy: sin(angle) * speed - random(2, 5), // Bias upward
+      size: random(4, 10),
+      color: color(random(255), random(255), random(255)),
+      alpha: 255,
+      life: random(40, 80),
+      maxLife: 80,
+      gravity: 0.15
+    };
+    fireworkParticles.push(particle);
+  }
+}
+
+function spawnFloatingReward(x, y) {
+  if (rewardImages.length === 0) return;
+
+  let cfg = REWARDS_CONFIG || {};
+  let img = random(rewardImages);
+
+  // Calculate responsive scale based on screen size
+  // Target size is a percentage of game area width
+  let targetSize = gameAreaWidth * (cfg.targetSizePercent || 0.3); // 30% of game width by default
+  let imgMaxDimension = Math.max(img.width, img.height);
+  let responsiveScale = targetSize / imgMaxDimension;
+
+  // Apply config scale as a multiplier
+  let finalScale = responsiveScale * (cfg.scaleMultiplier || 1.0);
+
+  let reward = {
+    img: img,
+    x: x + random(-(cfg.spawnOffsetX || 30), (cfg.spawnOffsetX || 30)),
+    y: y,
+    vy: -(cfg.floatSpeed || 2),
+    alpha: 255,
+    scale: finalScale,
+    rotation: random(-0.2, 0.2),
+    life: cfg.fadeTime || 120
+  };
+  floatingRewards.push(reward);
+}
+
+function updateFireworks() {
+  for (let i = fireworkParticles.length - 1; i >= 0; i--) {
+    let p = fireworkParticles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += p.gravity;
+    p.vx *= 0.98; // Air resistance
+    p.life--;
+    p.alpha = (p.life / p.maxLife) * 255;
+
+    if (p.life <= 0) {
+      fireworkParticles.splice(i, 1);
+    }
+  }
+}
+
+function updateFloatingRewards() {
+  for (let i = floatingRewards.length - 1; i >= 0; i--) {
+    let r = floatingRewards[i];
+    r.y += r.vy;
+    r.vy -= 0.01; // Slow down upward movement
+    r.life--;
+    r.alpha = Math.min(255, (r.life / 60) * 255); // Fade in last 60 frames
+
+    if (r.life <= 0) {
+      floatingRewards.splice(i, 1);
+    }
+  }
+}
+
+function drawFireworks() {
+  noStroke();
+  for (let p of fireworkParticles) {
+    let c = p.color;
+    fill(red(c), green(c), blue(c), p.alpha);
+    circle(p.x, p.y, p.size);
+  }
+}
+
+function drawFloatingRewards() {
+  for (let r of floatingRewards) {
+    push();
+    translate(r.x, r.y);
+    rotate(r.rotation);
+    tint(255, r.alpha);
+    imageMode(CENTER);
+    let w = r.img.width * r.scale;
+    let h = r.img.height * r.scale;
+    image(r.img, 0, 0, w, h);
+    noTint();
+    pop();
+  }
+}
+
+let lastFireworkSoundTime = 0;
+
+function triggerWatermelonCelebration(x, y) {
+  let fw = (REWARDS_CONFIG && REWARDS_CONFIG.fireworks) || {};
+  let particleCount = fw.particleCount || 30;
+  let salvoDuration = fw.salvoDuration || 3000;
+  let salvoInterval = fw.salvoInterval || 150;
+  let spreadX = fw.spreadX || 60;
+  let spreadY = fw.spreadY || 40;
+  let playSound = fw.playSound !== false;
+  let soundInterval = fw.soundInterval || 300;
+
+  // Calculate number of bursts
+  let burstCount = Math.floor(salvoDuration / salvoInterval);
+
+  // Spawn fireworks in a continuous salvo across top half of screen
+  for (let i = 0; i < burstCount; i++) {
+    setTimeout(() => {
+      // Random position in top half of screen
+      let burstX = random(gameAreaLeft + 30, gameAreaRight - 30);
+      let burstY = random(DANGER_LINE_Y + 20, canvasHeight * 0.5);
+      spawnFireworks(burstX, burstY, particleCount);
+
+      // Play firework sound (with throttling)
+      if (playSound && millis() - lastFireworkSoundTime > soundInterval) {
+        playFireworkSound();
+        lastFireworkSoundTime = millis();
+      }
+    }, i * salvoInterval);
+  }
+
+  // Spawn floating reward image
+  spawnFloatingReward(x, y);
+}
+
+function playFireworkSound() {
+  if (!soundEnabled || allMuted) return;
+  ensureAudioContext();
+  if (!audioContext) return;
+
+  // Create a firework pop/crackle sound
+  let now = audioContext.currentTime;
+
+  // Pop sound
+  let osc = audioContext.createOscillator();
+  let gain = audioContext.createGain();
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(150 + Math.random() * 100, now);
+  osc.frequency.exponentialRampToValueAtTime(50, now + 0.1);
+  gain.gain.setValueAtTime(globalVolume * 0.3, now);
+  gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+  osc.connect(gain);
+  gain.connect(audioContext.destination);
+  osc.start(now);
+  osc.stop(now + 0.15);
+
+  // Crackle/sparkle sound
+  let noise = audioContext.createOscillator();
+  let noiseGain = audioContext.createGain();
+  noise.type = 'sawtooth';
+  noise.frequency.setValueAtTime(800 + Math.random() * 400, now + 0.05);
+  noise.frequency.exponentialRampToValueAtTime(200, now + 0.2);
+  noiseGain.gain.setValueAtTime(globalVolume * 0.15, now + 0.05);
+  noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+  noise.connect(noiseGain);
+  noiseGain.connect(audioContext.destination);
+  noise.start(now + 0.05);
+  noise.stop(now + 0.25);
+}
+
 function clearAllFruits() {
   for (let fruit of fruits) {
     if (fruit) fruit.remove();
@@ -1192,6 +1428,10 @@ function drawGame() {
 
   // Draw combo meter
   drawComboMeter();
+
+  // Draw celebration effects
+  drawFireworks();
+  drawFloatingRewards();
 
   // Draw score
   drawScore();
@@ -1593,7 +1833,8 @@ function mousePressed() {
 }
 
 function mouseClicked() {
-  handleInput(mouseX, mouseY);
+  // Don't handle here - mousePressed already handles it
+  // This prevents double-triggering buttons
   return false; // Prevent default
 }
 
@@ -1642,6 +1883,9 @@ function handleInput(x, y) {
   // Handle leaderboard overlays first (they're modal)
   if (handleNameInputClick(x, y)) return;
   if (handleLeaderboardClick(x, y)) return;
+
+  // Handle mute button (available on all screens)
+  if (handleMuteButtonClick(x, y)) return;
 
   switch (gameState) {
     case 'menu':
@@ -1822,6 +2066,48 @@ function startBgm() {
   }
 }
 
+function toggleMute() {
+  allMuted = !allMuted;
+  if (bgm) {
+    bgm.muted = allMuted;
+  }
+}
+
+function drawMuteButton() {
+  let btnSize = 36;
+  let btnX = 10;
+  let btnY = 10;
+  let isHover = isMouseInRect(btnX, btnY, btnSize, btnSize);
+
+  // Button background
+  fill(isHover ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.2)');
+  noStroke();
+  rect(btnX, btnY, btnSize, btnSize, 8);
+
+  // Speaker icon
+  fill(255);
+  textAlign(CENTER, CENTER);
+  textSize(20);
+
+  if (allMuted) {
+    text('🔇', btnX + btnSize/2, btnY + btnSize/2);
+  } else {
+    text('🔊', btnX + btnSize/2, btnY + btnSize/2);
+  }
+}
+
+function handleMuteButtonClick(x, y) {
+  let btnSize = 36;
+  let btnX = 10;
+  let btnY = 10;
+
+  if (isPointInRect(x, y, btnX, btnY, btnSize, btnSize)) {
+    toggleMute();
+    return true;
+  }
+  return false;
+}
+
 function loadAudioFile(soundName, filePath) {
   fetch(filePath)
     .then(response => {
@@ -1851,8 +2137,8 @@ function ensureAudioContext() {
   }
 }
 
-function playSound(soundName) {
-  if (!soundEnabled) return;
+function playSound(soundName, pitchMultiplier = 1.0) {
+  if (!soundEnabled || allMuted) return;
 
   ensureAudioContext();
   if (!audioContext) return;
@@ -1871,27 +2157,28 @@ function playSound(soundName) {
     let source = audioContext.createBufferSource();
     let gainNode = audioContext.createGain();
     source.buffer = buffer;
+    source.playbackRate.value = pitchMultiplier; // Adjust pitch
     gainNode.gain.value = globalVolume * individualVolume;
     source.connect(gainNode);
     gainNode.connect(audioContext.destination);
     source.start();
   } else {
     // Play procedural placeholder sound
-    playPlaceholderSound(soundName, globalVolume * individualVolume);
+    playPlaceholderSound(soundName, globalVolume * individualVolume, pitchMultiplier);
   }
 }
 
-function playPlaceholderSound(soundName, volume) {
+function playPlaceholderSound(soundName, volume, pitchMultiplier = 1.0) {
   if (!audioContext) return;
 
   switch (soundName) {
     case 'spawn':
-      playTone(300, 500, 0.1, volume * 0.4, 'sine');
+      playTone(300 * pitchMultiplier, 500 * pitchMultiplier, 0.1, volume * 0.4, 'sine');
       break;
 
     case 'merge':
-      playTone(523, 523, 0.15, volume * 0.4, 'sine');
-      setTimeout(() => playTone(659, 659, 0.15, volume * 0.4, 'sine'), 80);
+      playTone(523 * pitchMultiplier, 523 * pitchMultiplier, 0.15, volume * 0.4, 'sine');
+      setTimeout(() => playTone(659 * pitchMultiplier, 659 * pitchMultiplier, 0.15, volume * 0.4, 'sine'), 80);
       break;
 
     case 'victory':

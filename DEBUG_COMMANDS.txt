@@ -87,6 +87,27 @@ clearAllFruits();
 fruits.forEach((f,i) => console.log(i, FRUITS[f.fruitIndex].name, f.x, f.y));
 
 
+=== CELEBRATION EFFECTS ===
+
+// Test fireworks at center of screen
+triggerWatermelonCelebration(canvasWidth/2, canvasHeight/2);
+
+// Spawn fireworks only
+spawnFireworks(canvasWidth/2, canvasHeight/2, 50);
+
+// Spawn floating reward image only
+spawnFloatingReward(canvasWidth/2, canvasHeight/2);
+
+// Spawn multiple reward images
+for(let i=0; i<5; i++) spawnFloatingReward(canvasWidth/2, canvasHeight/2);
+
+// Check loaded reward images
+console.log('Loaded rewards:', rewardImages.length);
+
+// Clear all effects
+fireworkParticles = []; floatingRewards = [];
+
+
 === QUICK TEST COMBOS ===
 
 // Test leaderboard submit flow with score 5000
@@ -95,5 +116,5 @@ score = 5000; winGame();
 // Quick game over with score 100
 score = 100; gameOver();
 
-// Spawn watermelon for easy win
+// Spawn pear for easy watermelon (one merge away)
 currentFruitIndex = 6; nextFruitIndex = 6;

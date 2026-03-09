@@ -19,7 +19,8 @@
       "Bash(gh repo edit:*)",
       "Bash(curl:*)",
       "WebFetch(domain:dreamlo.com)",
-      "WebFetch(domain:www.dreamlo.com)"
+      "WebFetch(domain:www.dreamlo.com)",
+      "Bash(ls -la \"C:\\\\Work\\\\Game\\\\Lemsuikagame\\\\images\\\\rewards\"\" 2>/dev/null || echo \"Folder empty or missing \")"
     ]
   }
 }

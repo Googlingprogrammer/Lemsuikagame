@@ -18,6 +18,18 @@ const SOUND_CONFIG = {
   volume: 0.5,
 
   // -------------------------------------------------------------------------
+  // COMBO PITCH SETTINGS
+  // -------------------------------------------------------------------------
+  // Controls how merge sound pitch increases during combos
+  // -------------------------------------------------------------------------
+
+  comboPitch: {
+    initial: 1.0,       // Starting pitch multiplier (1.0 = normal)
+    increasePercent: 10, // Percent increase per combo (10 = +10% per combo)
+    cap: 2            // Maximum pitch multiplier
+  },
+
+  // -------------------------------------------------------------------------
   // BACKGROUND MUSIC
   // -------------------------------------------------------------------------
   // file: Path to the BGM file (null = no BGM)
