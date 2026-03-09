@@ -2203,10 +2203,10 @@ function drawNameInputOverlay() {
 
   // Instructions
   textSize(14);
-  text('Enter 3 letters:', canvasWidth / 2, panelY + 95);
+  text('Enter your name:', canvasWidth / 2, panelY + 95);
 
   // Name input box
-  let inputW = 120;
+  let inputW = 180;
   let inputH = 50;
   let inputX = canvasWidth / 2 - inputW / 2;
   let inputY = panelY + 110;
@@ -2219,28 +2219,29 @@ function drawNameInputOverlay() {
   // Display entered letters
   noStroke();
   fill(ui.titleColor);
-  textSize(32);
+  textSize(28);
   textStyle(BOLD);
 
   // Show letters with underscores for empty slots
-  let displayName = playerNameInput.padEnd(3, '_');
-  let letterSpacing = 35;
-  let startX = canvasWidth / 2 - letterSpacing;
+  let maxLen = LEADERBOARD_CONFIG.maxNameLength;
+  let displayName = playerNameInput.padEnd(maxLen, '_');
+  let letterSpacing = 30;
+  let startX = canvasWidth / 2 - (letterSpacing * (maxLen - 1)) / 2;
 
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < maxLen; i++) {
     let char = displayName[i];
     let x = startX + i * letterSpacing;
     text(char, x, inputY + inputH / 2);
   }
   textStyle(NORMAL);
 
-  // Submit button (only if 3 letters entered)
+  // Submit button (only if enough letters entered)
   let btnY = panelY + 175;
   let btnW = 100;
   let btnH = 35;
   let btnX = canvasWidth / 2 - btnW / 2;
 
-  if (playerNameInput.length === 3) {
+  if (playerNameInput.length >= 1) {
     let hoverSubmit = isMouseInRect(btnX, btnY, btnW, btnH);
     fill(hoverSubmit ? ui.buttonHover : ui.buttonNormal);
     noStroke();
@@ -2360,7 +2361,7 @@ function drawLeaderboardScreen() {
 
   // Leaderboard entries
   let entryStartY = headerY + 35;
-  let entryHeight = 30;
+  let entryHeight = 40;
   let maxVisible = Math.floor((panelH - 140) / entryHeight);
 
   for (let i = 0; i < Math.min(leaderboardData.length, maxVisible); i++) {
@@ -2373,48 +2374,38 @@ function drawLeaderboardScreen() {
     if (i + leaderboardScrollOffset < 3) {
       let medals = ['#FFD700', '#C0C0C0', '#CD7F32']; // Gold, Silver, Bronze
       fill(medals[i + leaderboardScrollOffset]);
-      circle(panelX + 30, y, 20);
+      circle(panelX + 30, y - 3, 20);
       fill('#FFF');
       textSize(12);
       textAlign(CENTER, CENTER);
-      text(i + leaderboardScrollOffset + 1, panelX + 30, y);
+      text(i + leaderboardScrollOffset + 1, panelX + 30, y - 3);
     } else {
       fill(ui.textColor);
       textSize(14);
       textAlign(CENTER, CENTER);
-      text(i + leaderboardScrollOffset + 1, panelX + 30, y);
+      text(i + leaderboardScrollOffset + 1, panelX + 30, y - 3);
     }
 
     // Name
     fill(ui.textColor);
     textSize(16);
     textAlign(LEFT, CENTER);
-    text(entry.name || '???', panelX + 55, y);
+    text(entry.name || '???', panelX + 55, y - 5);
+
+    // Date (below name)
+    textSize(9);
+    fill('#999');
+    text(entry.date || '', panelX + 55, y + 10);
 
     // Score
+    fill(ui.textColor);
+    textSize(18);
     textAlign(RIGHT, CENTER);
     textStyle(BOLD);
     text(entry.score || 0, panelX + panelW - 20, y);
     textStyle(NORMAL);
   }
 
-  // Admin controls (if enabled)
-  if (LEADERBOARD_CONFIG.showAdminControls) {
-    let adminBtnY = panelY + panelH - 40;
-    let adminBtnW = 120;
-    let adminBtnH = 30;
-    let adminBtnX = canvasWidth / 2 - adminBtnW / 2;
-
-    let hoverAdmin = isMouseInRect(adminBtnX, adminBtnY, adminBtnW, adminBtnH);
-    fill(hoverAdmin ? '#C0392B' : '#E74C3C');
-    noStroke();
-    rect(adminBtnX, adminBtnY, adminBtnW, adminBtnH, 6);
-
-    fill('#FFF');
-    textSize(12);
-    textAlign(CENTER, CENTER);
-    text('Clear All Scores', adminBtnX + adminBtnW / 2, adminBtnY + adminBtnH / 2);
-  }
 }
 
 // ============================================================================
@@ -2439,7 +2430,7 @@ function handleNameInputClick(x, y) {
   }
 
   // Submit button
-  if (playerNameInput.length === 3 && !submitting) {
+  if (playerNameInput.length >= 1 && !submitting) {
     let btnY = panelY + 175;
     let btnW = 100;
     let btnH = 35;
@@ -2475,21 +2466,6 @@ function handleLeaderboardClick(x, y) {
     return true;
   }
 
-  // Admin clear button
-  if (LEADERBOARD_CONFIG.showAdminControls) {
-    let adminBtnY = panelY + panelH - 40;
-    let adminBtnW = 120;
-    let adminBtnH = 30;
-    let adminBtnX = canvasWidth / 2 - adminBtnW / 2;
-
-    if (isPointInRect(x, y, adminBtnX, adminBtnY, adminBtnW, adminBtnH)) {
-      if (confirm('Are you sure you want to clear ALL leaderboard scores? This cannot be undone!')) {
-        clearLeaderboard();
-      }
-      return true;
-    }
-  }
-
   return true; // Consume click (modal)
 }
 
@@ -2503,7 +2479,7 @@ function handleNameInputKey(key) {
   }
 
   // Handle Enter (submit if ready)
-  if (key === 'Enter' && playerNameInput.length === 3 && !submitting) {
+  if (key === 'Enter' && playerNameInput.length >= 1 && !submitting) {
     submitScore(playerNameInput.toUpperCase(), scoreToSubmit).then(success => {
       if (success) {
         closeNameInput();
@@ -2520,7 +2496,8 @@ function handleNameInputKey(key) {
   }
 
   // Handle letter input (A-Z only)
-  if (playerNameInput.length < 3 && key.length === 1 && /^[a-zA-Z]$/.test(key)) {
+  let maxLen = LEADERBOARD_CONFIG.maxNameLength;
+  if (playerNameInput.length < maxLen && key.length === 1 && /^[a-zA-Z]$/.test(key)) {
     playerNameInput += key.toUpperCase();
     return true;
   }

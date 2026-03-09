@@ -56,7 +56,10 @@ openLeaderboard();
 // Open name input (with score 999)
 promptNameInput(999);
 
-// Clear leaderboard data locally
+// Clear ALL scores from leaderboard (permanent!)
+clearLeaderboard();
+
+// Clear leaderboard data locally (just UI, doesn't delete from server)
 leaderboardData = [];
 
 // Force refresh leaderboard

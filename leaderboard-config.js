@@ -15,14 +15,14 @@ const LEADERBOARD_CONFIG = {
 
   // Bin ID - leave empty for first run, will be logged to console
   // After first score submission, copy the bin ID from console and paste here
-  binId: '',
+  binId: '69af0fd543b1c97be9c5f318',
 
   // jsonbin.io base URL
   baseUrl: 'https://api.jsonbin.io/v3/b',
 
   // Leaderboard settings
   maxEntries: 50,           // Max entries to keep
-  maxNameLength: 3,         // Player name length (3 letters)
+  maxNameLength: 5,         // Player name length (5 letters)
 
   // Admin settings (for clearing leaderboard)
   showAdminControls: true,

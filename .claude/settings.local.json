@@ -2,7 +2,24 @@
   "permissions": {
     "allow": [
       "Bash(git init:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Skill(git-push-personal)",
+      "Bash(git remote add:*)",
+      "Bash(git push:*)",
+      "Bash(gh repo create:*)",
+      "Bash(mkdir:*)",
+      "Bash(python -m http.server:*)",
+      "Bash(ipconfig:*)",
+      "Bash(findstr:*)",
+      "Bash(git restore:*)",
+      "Bash(dir:*)",
+      "Bash(gh repo view:*)",
+      "Bash(gh api:*)",
+      "Bash(gh repo edit:*)",
+      "Bash(curl:*)",
+      "WebFetch(domain:dreamlo.com)",
+      "WebFetch(domain:www.dreamlo.com)"
     ]
   }
 }
