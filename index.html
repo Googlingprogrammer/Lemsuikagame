@@ -43,6 +43,7 @@
   <script src="game-config.js"></script>
   <script src="sound-config.js"></script>
   <script src="ui-config.js"></script>
+  <script src="leaderboard-config.js"></script>
 
   <script>
 // ============================================================================
@@ -130,6 +131,24 @@ let fruitsGroup;
 
 // Wall sprites
 let walls = [];
+
+// ============================================================================
+// LEADERBOARD STATE
+// ============================================================================
+let leaderboardData = [];           // Cached leaderboard entries
+let leaderboardLoading = false;     // Loading state
+let leaderboardError = null;        // Error message if any
+
+// Name input state (for score submission)
+let playerNameInput = '';           // Current input (max 3 chars)
+let showNameInput = false;          // Show name input overlay
+let nameInputCallback = null;       // Callback after name entered
+let scoreToSubmit = 0;              // Score being submitted
+let submitting = false;             // Submission in progress
+
+// Leaderboard view state
+let showLeaderboard = false;        // Show leaderboard screen
+let leaderboardScrollOffset = 0;    // For scrolling long lists
 
 // ============================================================================
 // P5.JS FUNCTIONS
@@ -387,6 +406,10 @@ function draw() {
   if (bDebug) {
     drawDebug();
   }
+
+  // Leaderboard overlays (drawn on top of everything)
+  drawLeaderboardScreen();
+  drawNameInputOverlay();
 }
 
 function drawDebug() {
@@ -506,7 +529,7 @@ function drawMenu() {
 
   // Play button
   let btnX = canvasWidth / 2;
-  let btnY = canvasHeight * 0.72;
+  let btnY = canvasHeight * 0.68;
   let btnW = 160;
   let btnH = 50;
 
@@ -520,11 +543,24 @@ function drawMenu() {
   textSize(24);
   text('Play', btnX, btnY);
 
-  // Instructions
+  // Leaderboard button (smaller, below play)
+  let lbBtnY = canvasHeight * 0.77;
+  let lbBtnW = 130;
+  let lbBtnH = 35;
+
+  let lbHover = isMouseInRect(btnX - lbBtnW/2, lbBtnY - lbBtnH/2, lbBtnW, lbBtnH);
+  fill(lbHover ? '#1976D2' : '#2196F3');
+  noStroke();
+  rect(btnX - lbBtnW/2, lbBtnY - lbBtnH/2, lbBtnW, lbBtnH, 8);
+
+  fill('#FFFFFF');
   textSize(14);
+  text('Leaderboard', btnX, lbBtnY);
+
+  // Instructions
+  textSize(12);
   fill(UI_CONFIG.menu.instructionColor);
-  text('Tap to drop fruits', canvasWidth / 2, canvasHeight * 0.83);
-  text('Match same fruits to merge!', canvasWidth / 2, canvasHeight * 0.87);
+  text('Tap to drop fruits', canvasWidth / 2, canvasHeight * 0.85);
 }
 
 // ============================================================================
@@ -1394,9 +1430,9 @@ function drawWinScreen() {
   fill(UI_CONFIG.win.overlayColor);
   rect(0, 0, canvasWidth, canvasHeight);
 
-  // Win panel - fixed height, centered
+  // Win panel - fixed height, centered (increased for new button)
   let panelW = 220;
-  let panelH = 320;
+  let panelH = 380;
   let panelX = canvasWidth / 2 - panelW / 2;
   let panelY = canvasHeight / 2 - panelH / 2 - 30;
 
@@ -1412,41 +1448,60 @@ function drawWinScreen() {
 
   // Watermelon emoji
   textSize(60);
-  text('\u{1F349}', canvasWidth / 2, panelY + 110);
+  text('\u{1F349}', canvasWidth / 2, panelY + 105);
 
   // Score
   fill(UI_CONFIG.win.scoreColor);
   textSize(24);
-  text('Score: ' + score, canvasWidth / 2, panelY + 170);
+  text('Score: ' + score, canvasWidth / 2, panelY + 160);
 
   textSize(16);
   fill(UI_CONFIG.win.highScoreColor);
-  text('High Score: ' + highScore, canvasWidth / 2, panelY + 200);
+  text('High Score: ' + highScore, canvasWidth / 2, panelY + 185);
+
+  // Submit to Leaderboard button
+  let btn0X = canvasWidth / 2;
+  let btn0Y = panelY + 225;
+  let btnW = 180;
+  let btnH = 38;
+
+  let hover0 = isMouseInRect(btn0X - btnW/2, btn0Y - btnH/2, btnW, btnH);
+  fill(hover0 ? '#FFA000' : '#FFC107');
+  noStroke();
+  rect(btn0X - btnW/2, btn0Y - btnH/2, btnW, btnH, 8);
+
+  fill('#5D4037');
+  textSize(15);
+  text('Submit to Leaderboard', btn0X, btn0Y);
 
   // Play Again button
-  let btn1X = canvasWidth / 2;
-  let btn1Y = panelY + 245;
-  let btnW = 180;
-  let btnH = 40;
+  let btn1Y = panelY + 275;
 
-  let hover1 = isMouseInRect(btn1X - btnW/2, btn1Y - btnH/2, btnW, btnH);
+  let hover1 = isMouseInRect(btn0X - btnW/2, btn1Y - btnH/2, btnW, btnH);
   fill(hover1 ? UI_CONFIG.win.playAgainButton.hover : UI_CONFIG.win.playAgainButton.normal);
   noStroke();
-  rect(btn1X - btnW/2, btn1Y - btnH/2, btnW, btnH, 8);
+  rect(btn0X - btnW/2, btn1Y - btnH/2, btnW, btnH, 8);
 
   fill(UI_CONFIG.win.playAgainButton.textColor);
-  textSize(18);
-  text('Play Again', btn1X, btn1Y);
+  textSize(16);
+  text('Play Again', btn0X, btn1Y);
 
   // Continue in Endless button
-  let btn2Y = panelY + 295;
-  let hover2 = isMouseInRect(btn1X - btnW/2, btn2Y - btnH/2, btnW, btnH);
+  let btn2Y = panelY + 322;
+  let hover2 = isMouseInRect(btn0X - btnW/2, btn2Y - btnH/2, btnW, btnH);
   fill(hover2 ? UI_CONFIG.win.endlessButton.hover : UI_CONFIG.win.endlessButton.normal);
-  rect(btn1X - btnW/2, btn2Y - btnH/2, btnW, btnH, 8);
+  rect(btn0X - btnW/2, btn2Y - btnH/2, btnW, btnH, 8);
 
   fill(UI_CONFIG.win.endlessButton.textColor);
-  textSize(16);
-  text('Continue in Endless', btn1X, btn2Y);
+  textSize(14);
+  text('Continue in Endless', btn0X, btn2Y);
+
+  // View Leaderboard link
+  let linkY = panelY + 360;
+  let hoverLink = isMouseInRect(btn0X - 60, linkY - 10, 120, 20);
+  fill(hoverLink ? '#1976D2' : '#2196F3');
+  textSize(13);
+  text('View Leaderboard', btn0X, linkY);
 }
 
 // ============================================================================
@@ -1458,49 +1513,74 @@ function drawLoseScreen() {
   fill(UI_CONFIG.lose.overlayColor);
   rect(0, 0, canvasWidth, canvasHeight);
 
-  // Game over panel
+  // Game over panel (increased height for new buttons)
+  let panelW = 200;
+  let panelH = canvasHeight * 0.68;
+  let panelX = canvasWidth / 2 - panelW / 2;
+  let panelY = canvasHeight * 0.18;
+
   fill(UI_CONFIG.lose.panelColor);
   noStroke();
-  rect(canvasWidth / 2 - 100, canvasHeight * 0.22, 200, canvasHeight * 0.6, 15);
+  rect(panelX, panelY, panelW, panelH, 15);
 
   // Game over message
   fill(UI_CONFIG.lose.titleColor);
   textAlign(CENTER, CENTER);
-  textSize(36);
-  text('GAME OVER', canvasWidth / 2, canvasHeight * 0.32);
+  textSize(32);
+  text('GAME OVER', canvasWidth / 2, panelY + 45);
 
   // Score
   fill(UI_CONFIG.lose.scoreColor);
   textSize(24);
-  text('Score: ' + score, canvasWidth / 2, canvasHeight * 0.47);
+  text('Score: ' + score, canvasWidth / 2, panelY + 95);
 
   textSize(16);
   fill(UI_CONFIG.lose.highScoreColor);
-  text('High Score: ' + highScore, canvasWidth / 2, canvasHeight * 0.54);
+  text('High Score: ' + highScore, canvasWidth / 2, panelY + 125);
+
+  // Submit to Leaderboard button
+  let btnX = canvasWidth / 2;
+  let btn0Y = panelY + 170;
+  let btnW = 170;
+  let btnH = 38;
+
+  let hover0 = isMouseInRect(btnX - btnW/2, btn0Y - btnH/2, btnW, btnH);
+  fill(hover0 ? '#FFA000' : '#FFC107');
+  noStroke();
+  rect(btnX - btnW/2, btn0Y - btnH/2, btnW, btnH, 8);
+
+  fill('#5D4037');
+  textSize(14);
+  text('Submit to Leaderboard', btnX, btn0Y);
 
   // Try Again button
-  let btn1X = canvasWidth / 2;
-  let btn1Y = canvasHeight * 0.65;
-  let btnW = 160;
-  let btnH = 45;
+  let btn1Y = panelY + 220;
 
-  let hover1 = isMouseInRect(btn1X - btnW/2, btn1Y - btnH/2, btnW, btnH);
+  let hover1 = isMouseInRect(btnX - btnW/2, btn1Y - btnH/2, btnW, btnH);
   fill(hover1 ? UI_CONFIG.lose.tryAgainButton.hover : UI_CONFIG.lose.tryAgainButton.normal);
   noStroke();
-  rect(btn1X - btnW/2, btn1Y - btnH/2, btnW, btnH, 8);
+  rect(btnX - btnW/2, btn1Y - btnH/2, btnW, btnH, 8);
 
   fill(UI_CONFIG.lose.tryAgainButton.textColor);
-  textSize(18);
-  text('Try Again', btn1X, btn1Y);
+  textSize(16);
+  text('Try Again', btnX, btn1Y);
 
   // Main Menu button
-  let btn2Y = canvasHeight * 0.77;
-  let hover2 = isMouseInRect(btn1X - btnW/2, btn2Y - btnH/2, btnW, btnH);
+  let btn2Y = panelY + 268;
+  let hover2 = isMouseInRect(btnX - btnW/2, btn2Y - btnH/2, btnW, btnH);
   fill(hover2 ? UI_CONFIG.lose.menuButton.hover : UI_CONFIG.lose.menuButton.normal);
-  rect(btn1X - btnW/2, btn2Y - btnH/2, btnW, btnH, 8);
+  rect(btnX - btnW/2, btn2Y - btnH/2, btnW, btnH, 8);
 
   fill(UI_CONFIG.lose.menuButton.textColor);
-  text('Main Menu', btn1X, btn2Y);
+  textSize(16);
+  text('Main Menu', btnX, btn2Y);
+
+  // View Leaderboard link
+  let linkY = panelY + panelH - 25;
+  let hoverLink = isMouseInRect(btnX - 60, linkY - 10, 120, 20);
+  fill(hoverLink ? '#1976D2' : '#2196F3');
+  textSize(13);
+  text('View Leaderboard', btnX, linkY);
 }
 
 // ============================================================================
@@ -1539,9 +1619,29 @@ function touchMoved() {
   return false; // Prevent default
 }
 
+function keyPressed() {
+  // Handle name input when overlay is open
+  if (showNameInput) {
+    handleNameInputKey(key);
+    return false;
+  }
+
+  // Close leaderboard with Escape
+  if (showLeaderboard && key === 'Escape') {
+    closeLeaderboard();
+    return false;
+  }
+
+  return true;
+}
+
 function handleInput(x, y) {
   // Start BGM on first user interaction (browser autoplay policy)
   startBgm();
+
+  // Handle leaderboard overlays first (they're modal)
+  if (handleNameInputClick(x, y)) return;
+  if (handleLeaderboardClick(x, y)) return;
 
   switch (gameState) {
     case 'menu':
@@ -1560,14 +1660,26 @@ function handleInput(x, y) {
 }
 
 function handleMenuInput(x, y) {
-  // Check play button
   let btnX = canvasWidth / 2;
-  let btnY = canvasHeight * 0.7;
-  let btnW = 160;
-  let btnH = 50;
 
-  if (isPointInRect(x, y, btnX - btnW/2, btnY - btnH/2, btnW, btnH)) {
+  // Check play button
+  let playBtnY = canvasHeight * 0.68;
+  let playBtnW = 160;
+  let playBtnH = 50;
+
+  if (isPointInRect(x, y, btnX - playBtnW/2, playBtnY - playBtnH/2, playBtnW, playBtnH)) {
     startGame('normal');
+    return;
+  }
+
+  // Check leaderboard button
+  let lbBtnY = canvasHeight * 0.77;
+  let lbBtnW = 130;
+  let lbBtnH = 35;
+
+  if (isPointInRect(x, y, btnX - lbBtnW/2, lbBtnY - lbBtnH/2, lbBtnW, lbBtnH)) {
+    openLeaderboard();
+    return;
   }
 }
 
@@ -1581,36 +1693,65 @@ function handleGameInput(x, y) {
 }
 
 function handleWinInput(x, y) {
-  let panelH = 320;
+  let panelH = 380;
   let panelY = canvasHeight / 2 - panelH / 2 - 30;
 
   let btnX = canvasWidth / 2;
-  let btn1Y = panelY + 245;
-  let btn2Y = panelY + 295;
+  let btn0Y = panelY + 225;  // Submit to Leaderboard
+  let btn1Y = panelY + 275;  // Play Again
+  let btn2Y = panelY + 322;  // Continue in Endless
+  let linkY = panelY + 360;  // View Leaderboard
   let btnW = 180;
-  let btnH = 40;
+  let btnH = 38;
+
+  // Submit to Leaderboard
+  if (isPointInRect(x, y, btnX - btnW/2, btn0Y - btnH/2, btnW, btnH)) {
+    promptNameInput(score);
+    return;
+  }
 
   // Play Again
   if (isPointInRect(x, y, btnX - btnW/2, btn1Y - btnH/2, btnW, btnH)) {
     startGame('normal');
+    return;
   }
 
   // Continue in Endless
   if (isPointInRect(x, y, btnX - btnW/2, btn2Y - btnH/2, btnW, btnH)) {
     continueToEndless();
+    return;
+  }
+
+  // View Leaderboard link
+  if (isPointInRect(x, y, btnX - 60, linkY - 10, 120, 20)) {
+    openLeaderboard();
+    return;
   }
 }
 
 function handleLoseInput(x, y) {
+  let panelW = 200;
+  let panelH = canvasHeight * 0.68;
+  let panelY = canvasHeight * 0.18;
+
   let btnX = canvasWidth / 2;
-  let btn1Y = canvasHeight * 0.65;
-  let btn2Y = canvasHeight * 0.77;
-  let btnW = 160;
-  let btnH = 45;
+  let btn0Y = panelY + 170;  // Submit to Leaderboard
+  let btn1Y = panelY + 220;  // Try Again
+  let btn2Y = panelY + 268;  // Main Menu
+  let linkY = panelY + panelH - 25;  // View Leaderboard
+  let btnW = 170;
+  let btnH = 38;
+
+  // Submit to Leaderboard
+  if (isPointInRect(x, y, btnX - btnW/2, btn0Y - btnH/2, btnW, btnH)) {
+    promptNameInput(score);
+    return;
+  }
 
   // Try Again (restarts as Normal Mode)
   if (isPointInRect(x, y, btnX - btnW/2, btn1Y - btnH/2, btnW, btnH)) {
     startGame('normal');
+    return;
   }
 
   // Main Menu
@@ -1622,6 +1763,13 @@ function handleLoseInput(x, y) {
       if (wall) wall.remove();
     }
     walls = [];
+    return;
+  }
+
+  // View Leaderboard link
+  if (isPointInRect(x, y, btnX - 60, linkY - 10, 120, 20)) {
+    openLeaderboard();
+    return;
   }
 }
 
@@ -1789,6 +1937,595 @@ function playVictoryFanfare(volume) {
       playTone(freq, freq, 0.4, volume * 0.2, 'sine');
     }
   }, delay + 50);
+}
+
+// ============================================================================
+// LEADERBOARD FUNCTIONS
+// ============================================================================
+
+// jsonbin.io API helpers
+function getApiHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    'X-Master-Key': LEADERBOARD_CONFIG.apiKey
+  };
+}
+
+async function fetchLeaderboard() {
+  if (!LEADERBOARD_CONFIG || LEADERBOARD_CONFIG.apiKey === 'YOUR_API_KEY_HERE') {
+    leaderboardError = 'API key not configured';
+    return;
+  }
+
+  if (!LEADERBOARD_CONFIG.binId) {
+    leaderboardData = [];
+    leaderboardError = 'No leaderboard yet - submit a score to create one!';
+    return;
+  }
+
+  leaderboardLoading = true;
+  leaderboardError = null;
+
+  try {
+    let url = `${LEADERBOARD_CONFIG.baseUrl}/${LEADERBOARD_CONFIG.binId}/latest`;
+    let response = await fetch(url, {
+      method: 'GET',
+      headers: getApiHeaders()
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch leaderboard');
+    }
+
+    let data = await response.json();
+
+    // jsonbin returns { record: { leaderboard: [...] } }
+    if (data.record && data.record.leaderboard) {
+      leaderboardData = data.record.leaderboard;
+      // Sort by score descending
+      leaderboardData.sort((a, b) => b.score - a.score);
+    } else {
+      leaderboardData = [];
+    }
+
+    leaderboardLoading = false;
+  } catch (e) {
+    console.error('Leaderboard fetch error:', e);
+    leaderboardError = 'Failed to load leaderboard';
+    leaderboardLoading = false;
+  }
+}
+
+async function createLeaderboardBin(initialData) {
+  try {
+    let response = await fetch(LEADERBOARD_CONFIG.baseUrl, {
+      method: 'POST',
+      headers: {
+        ...getApiHeaders(),
+        'X-Bin-Name': 'suika-leaderboard'
+      },
+      body: JSON.stringify(initialData)
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to create leaderboard');
+    }
+
+    let data = await response.json();
+    let binId = data.metadata.id;
+
+    console.log('===========================================');
+    console.log('LEADERBOARD CREATED! Copy this Bin ID:');
+    console.log(binId);
+    console.log('Paste it in leaderboard-config.js as binId');
+    console.log('===========================================');
+
+    // Store temporarily (won't persist on refresh until user updates config)
+    LEADERBOARD_CONFIG.binId = binId;
+
+    return binId;
+  } catch (e) {
+    console.error('Failed to create bin:', e);
+    throw e;
+  }
+}
+
+async function updateLeaderboardBin(leaderboard) {
+  try {
+    let url = `${LEADERBOARD_CONFIG.baseUrl}/${LEADERBOARD_CONFIG.binId}`;
+    let response = await fetch(url, {
+      method: 'PUT',
+      headers: getApiHeaders(),
+      body: JSON.stringify({ leaderboard: leaderboard })
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to update leaderboard');
+    }
+
+    return true;
+  } catch (e) {
+    console.error('Failed to update bin:', e);
+    throw e;
+  }
+}
+
+async function submitScore(playerName, playerScore) {
+  if (!LEADERBOARD_CONFIG || LEADERBOARD_CONFIG.apiKey === 'YOUR_API_KEY_HERE') {
+    leaderboardError = 'API key not configured';
+    return false;
+  }
+
+  submitting = true;
+  leaderboardError = null;
+
+  try {
+    let dateStr = new Date().toISOString().slice(0, 16).replace('T', ' ');
+
+    let newEntry = {
+      name: playerName.toUpperCase(),
+      score: playerScore,
+      date: dateStr
+    };
+
+    // If no bin exists yet, create one
+    if (!LEADERBOARD_CONFIG.binId) {
+      await createLeaderboardBin({ leaderboard: [newEntry] });
+      leaderboardData = [newEntry];
+      submitting = false;
+      return true;
+    }
+
+    // Fetch current leaderboard
+    await fetchLeaderboard();
+
+    // Add new entry
+    let updatedLeaderboard = [...leaderboardData, newEntry];
+
+    // Sort by score descending
+    updatedLeaderboard.sort((a, b) => b.score - a.score);
+
+    // Keep only top entries
+    updatedLeaderboard = updatedLeaderboard.slice(0, LEADERBOARD_CONFIG.maxEntries);
+
+    // Update bin
+    await updateLeaderboardBin(updatedLeaderboard);
+
+    leaderboardData = updatedLeaderboard;
+    submitting = false;
+    return true;
+  } catch (e) {
+    console.error('Score submission error:', e);
+    leaderboardError = 'Failed to submit score';
+    submitting = false;
+    return false;
+  }
+}
+
+async function clearLeaderboard() {
+  if (!LEADERBOARD_CONFIG || LEADERBOARD_CONFIG.apiKey === 'YOUR_API_KEY_HERE') {
+    leaderboardError = 'API key not configured';
+    return false;
+  }
+
+  if (!LEADERBOARD_CONFIG.binId) {
+    leaderboardData = [];
+    return true;
+  }
+
+  try {
+    await updateLeaderboardBin([]);
+    leaderboardData = [];
+    return true;
+  } catch (e) {
+    console.error('Clear leaderboard error:', e);
+    leaderboardError = 'Failed to clear leaderboard';
+    return false;
+  }
+}
+
+async function deleteLeaderboardEntry(playerName) {
+  if (!LEADERBOARD_CONFIG || LEADERBOARD_CONFIG.apiKey === 'YOUR_API_KEY_HERE') {
+    leaderboardError = 'API key not configured';
+    return false;
+  }
+
+  try {
+    // Filter out the entry
+    let updatedLeaderboard = leaderboardData.filter(e => e.name !== playerName);
+
+    await updateLeaderboardBin(updatedLeaderboard);
+    leaderboardData = updatedLeaderboard;
+    return true;
+  } catch (e) {
+    console.error('Delete entry error:', e);
+    leaderboardError = 'Failed to delete entry';
+    return false;
+  }
+}
+
+function promptNameInput(scoreValue, callback) {
+  playerNameInput = '';
+  scoreToSubmit = scoreValue;
+  nameInputCallback = callback;
+  showNameInput = true;
+}
+
+function closeNameInput() {
+  showNameInput = false;
+  playerNameInput = '';
+  nameInputCallback = null;
+}
+
+function openLeaderboard() {
+  showLeaderboard = true;
+  leaderboardScrollOffset = 0;
+  fetchLeaderboard();
+}
+
+function closeLeaderboard() {
+  showLeaderboard = false;
+}
+
+// ============================================================================
+// LEADERBOARD UI DRAWING
+// ============================================================================
+
+function drawNameInputOverlay() {
+  if (!showNameInput) return;
+
+  let ui = LEADERBOARD_CONFIG.ui;
+
+  // Darken background
+  fill(0, 0, 0, 180);
+  rect(0, 0, canvasWidth, canvasHeight);
+
+  // Input panel
+  let panelW = 240;
+  let panelH = 220;
+  let panelX = canvasWidth / 2 - panelW / 2;
+  let panelY = canvasHeight / 2 - panelH / 2;
+
+  fill(ui.panelColor);
+  noStroke();
+  rect(panelX, panelY, panelW, panelH, 15);
+
+  // Title
+  fill(ui.titleColor);
+  textAlign(CENTER, CENTER);
+  textSize(22);
+  text('SUBMIT SCORE', canvasWidth / 2, panelY + 30);
+
+  // Score display
+  fill(ui.textColor);
+  textSize(18);
+  text('Score: ' + scoreToSubmit, canvasWidth / 2, panelY + 60);
+
+  // Instructions
+  textSize(14);
+  text('Enter 3 letters:', canvasWidth / 2, panelY + 95);
+
+  // Name input box
+  let inputW = 120;
+  let inputH = 50;
+  let inputX = canvasWidth / 2 - inputW / 2;
+  let inputY = panelY + 110;
+
+  fill(ui.inputBackgroundColor);
+  stroke(ui.inputBorderColor);
+  strokeWeight(2);
+  rect(inputX, inputY, inputW, inputH, 8);
+
+  // Display entered letters
+  noStroke();
+  fill(ui.titleColor);
+  textSize(32);
+  textStyle(BOLD);
+
+  // Show letters with underscores for empty slots
+  let displayName = playerNameInput.padEnd(3, '_');
+  let letterSpacing = 35;
+  let startX = canvasWidth / 2 - letterSpacing;
+
+  for (let i = 0; i < 3; i++) {
+    let char = displayName[i];
+    let x = startX + i * letterSpacing;
+    text(char, x, inputY + inputH / 2);
+  }
+  textStyle(NORMAL);
+
+  // Submit button (only if 3 letters entered)
+  let btnY = panelY + 175;
+  let btnW = 100;
+  let btnH = 35;
+  let btnX = canvasWidth / 2 - btnW / 2;
+
+  if (playerNameInput.length === 3) {
+    let hoverSubmit = isMouseInRect(btnX, btnY, btnW, btnH);
+    fill(hoverSubmit ? ui.buttonHover : ui.buttonNormal);
+    noStroke();
+    rect(btnX, btnY, btnW, btnH, 8);
+
+    fill(ui.buttonText);
+    textSize(16);
+    text(submitting ? 'Sending...' : 'Submit', canvasWidth / 2, btnY + btnH / 2);
+  } else {
+    // Disabled button
+    fill(150);
+    noStroke();
+    rect(btnX, btnY, btnW, btnH, 8);
+
+    fill(100);
+    textSize(16);
+    text('Submit', canvasWidth / 2, btnY + btnH / 2);
+  }
+
+  // Cancel button (X in corner)
+  let closeX = panelX + panelW - 25;
+  let closeY = panelY + 10;
+  let closeSize = 20;
+
+  let hoverClose = isMouseInRect(closeX, closeY, closeSize, closeSize);
+  fill(hoverClose ? '#E74C3C' : '#999');
+  textSize(20);
+  text('X', closeX + closeSize / 2, closeY + closeSize / 2);
+
+  // Error message
+  if (leaderboardError) {
+    fill(ui.errorColor);
+    textSize(12);
+    text(leaderboardError, canvasWidth / 2, panelY + panelH - 10);
+  }
+}
+
+function drawLeaderboardScreen() {
+  if (!showLeaderboard) return;
+
+  let ui = LEADERBOARD_CONFIG.ui;
+
+  // Full screen overlay
+  fill(0, 0, 0, 200);
+  rect(0, 0, canvasWidth, canvasHeight);
+
+  // Leaderboard panel
+  let panelW = canvasWidth - 40;
+  let panelH = canvasHeight - 80;
+  let panelX = 20;
+  let panelY = 40;
+
+  fill(ui.panelColor);
+  noStroke();
+  rect(panelX, panelY, panelW, panelH, 15);
+
+  // Title
+  fill(ui.titleColor);
+  textAlign(CENTER, CENTER);
+  textSize(28);
+  text('LEADERBOARD', canvasWidth / 2, panelY + 35);
+
+  // Close button (X)
+  let closeX = panelX + panelW - 35;
+  let closeY = panelY + 10;
+  let closeSize = 25;
+
+  let hoverClose = isMouseInRect(closeX, closeY, closeSize, closeSize);
+  fill(hoverClose ? '#E74C3C' : '#999');
+  textSize(24);
+  text('X', closeX + closeSize / 2, closeY + closeSize / 2);
+
+  // Loading state
+  if (leaderboardLoading) {
+    fill(ui.textColor);
+    textSize(18);
+    text('Loading...', canvasWidth / 2, canvasHeight / 2);
+    return;
+  }
+
+  // Error state
+  if (leaderboardError) {
+    fill(ui.errorColor);
+    textSize(16);
+    text(leaderboardError, canvasWidth / 2, canvasHeight / 2);
+    return;
+  }
+
+  // Empty state
+  if (leaderboardData.length === 0) {
+    fill(ui.textColor);
+    textSize(16);
+    text('No scores yet!', canvasWidth / 2, canvasHeight / 2);
+    text('Be the first to submit!', canvasWidth / 2, canvasHeight / 2 + 25);
+    return;
+  }
+
+  // Column headers
+  let headerY = panelY + 70;
+  fill(ui.headerColor);
+  textSize(14);
+  textStyle(BOLD);
+
+  textAlign(CENTER, CENTER);
+  text('#', panelX + 30, headerY);
+  textAlign(LEFT, CENTER);
+  text('NAME', panelX + 55, headerY);
+  textAlign(RIGHT, CENTER);
+  text('SCORE', panelX + panelW - 20, headerY);
+  textStyle(NORMAL);
+
+  // Divider line
+  stroke(ui.inputBorderColor);
+  strokeWeight(1);
+  line(panelX + 15, headerY + 15, panelX + panelW - 15, headerY + 15);
+  noStroke();
+
+  // Leaderboard entries
+  let entryStartY = headerY + 35;
+  let entryHeight = 30;
+  let maxVisible = Math.floor((panelH - 140) / entryHeight);
+
+  for (let i = 0; i < Math.min(leaderboardData.length, maxVisible); i++) {
+    let entry = leaderboardData[i + leaderboardScrollOffset];
+    if (!entry) continue;
+
+    let y = entryStartY + i * entryHeight;
+
+    // Highlight top 3
+    if (i + leaderboardScrollOffset < 3) {
+      let medals = ['#FFD700', '#C0C0C0', '#CD7F32']; // Gold, Silver, Bronze
+      fill(medals[i + leaderboardScrollOffset]);
+      circle(panelX + 30, y, 20);
+      fill('#FFF');
+      textSize(12);
+      textAlign(CENTER, CENTER);
+      text(i + leaderboardScrollOffset + 1, panelX + 30, y);
+    } else {
+      fill(ui.textColor);
+      textSize(14);
+      textAlign(CENTER, CENTER);
+      text(i + leaderboardScrollOffset + 1, panelX + 30, y);
+    }
+
+    // Name
+    fill(ui.textColor);
+    textSize(16);
+    textAlign(LEFT, CENTER);
+    text(entry.name || '???', panelX + 55, y);
+
+    // Score
+    textAlign(RIGHT, CENTER);
+    textStyle(BOLD);
+    text(entry.score || 0, panelX + panelW - 20, y);
+    textStyle(NORMAL);
+  }
+
+  // Admin controls (if enabled)
+  if (LEADERBOARD_CONFIG.showAdminControls) {
+    let adminBtnY = panelY + panelH - 40;
+    let adminBtnW = 120;
+    let adminBtnH = 30;
+    let adminBtnX = canvasWidth / 2 - adminBtnW / 2;
+
+    let hoverAdmin = isMouseInRect(adminBtnX, adminBtnY, adminBtnW, adminBtnH);
+    fill(hoverAdmin ? '#C0392B' : '#E74C3C');
+    noStroke();
+    rect(adminBtnX, adminBtnY, adminBtnW, adminBtnH, 6);
+
+    fill('#FFF');
+    textSize(12);
+    textAlign(CENTER, CENTER);
+    text('Clear All Scores', adminBtnX + adminBtnW / 2, adminBtnY + adminBtnH / 2);
+  }
+}
+
+// ============================================================================
+// LEADERBOARD INPUT HANDLING
+// ============================================================================
+
+function handleNameInputClick(x, y) {
+  if (!showNameInput) return false;
+
+  let ui = LEADERBOARD_CONFIG.ui;
+  let panelW = 240;
+  let panelH = 220;
+  let panelX = canvasWidth / 2 - panelW / 2;
+  let panelY = canvasHeight / 2 - panelH / 2;
+
+  // Close button
+  let closeX = panelX + panelW - 25;
+  let closeY = panelY + 10;
+  if (isPointInRect(x, y, closeX, closeY, 20, 20)) {
+    closeNameInput();
+    return true;
+  }
+
+  // Submit button
+  if (playerNameInput.length === 3 && !submitting) {
+    let btnY = panelY + 175;
+    let btnW = 100;
+    let btnH = 35;
+    let btnX = canvasWidth / 2 - btnW / 2;
+
+    if (isPointInRect(x, y, btnX, btnY, btnW, btnH)) {
+      submitScore(playerNameInput.toUpperCase(), scoreToSubmit).then(success => {
+        if (success) {
+          closeNameInput();
+          openLeaderboard();
+        }
+      });
+      return true;
+    }
+  }
+
+  return true; // Consume click (modal)
+}
+
+function handleLeaderboardClick(x, y) {
+  if (!showLeaderboard) return false;
+
+  let panelW = canvasWidth - 40;
+  let panelH = canvasHeight - 80;
+  let panelX = 20;
+  let panelY = 40;
+
+  // Close button
+  let closeX = panelX + panelW - 35;
+  let closeY = panelY + 10;
+  if (isPointInRect(x, y, closeX, closeY, 25, 25)) {
+    closeLeaderboard();
+    return true;
+  }
+
+  // Admin clear button
+  if (LEADERBOARD_CONFIG.showAdminControls) {
+    let adminBtnY = panelY + panelH - 40;
+    let adminBtnW = 120;
+    let adminBtnH = 30;
+    let adminBtnX = canvasWidth / 2 - adminBtnW / 2;
+
+    if (isPointInRect(x, y, adminBtnX, adminBtnY, adminBtnW, adminBtnH)) {
+      if (confirm('Are you sure you want to clear ALL leaderboard scores? This cannot be undone!')) {
+        clearLeaderboard();
+      }
+      return true;
+    }
+  }
+
+  return true; // Consume click (modal)
+}
+
+function handleNameInputKey(key) {
+  if (!showNameInput) return false;
+
+  // Handle backspace
+  if (key === 'Backspace' && playerNameInput.length > 0) {
+    playerNameInput = playerNameInput.slice(0, -1);
+    return true;
+  }
+
+  // Handle Enter (submit if ready)
+  if (key === 'Enter' && playerNameInput.length === 3 && !submitting) {
+    submitScore(playerNameInput.toUpperCase(), scoreToSubmit).then(success => {
+      if (success) {
+        closeNameInput();
+        openLeaderboard();
+      }
+    });
+    return true;
+  }
+
+  // Handle Escape (cancel)
+  if (key === 'Escape') {
+    closeNameInput();
+    return true;
+  }
+
+  // Handle letter input (A-Z only)
+  if (playerNameInput.length < 3 && key.length === 1 && /^[a-zA-Z]$/.test(key)) {
+    playerNameInput += key.toUpperCase();
+    return true;
+  }
+
+  return true; // Consume all keys when input is open
 }
 
 // ============================================================================
